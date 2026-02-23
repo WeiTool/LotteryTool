@@ -105,12 +105,19 @@ class IconViewModel @Inject constructor(
         emptyMap()
     )
 
-    val articleOfficialMissingStates: StateFlow<Map<Long, Boolean>> = officialInfoDao
-        .getArticlesWithMissingOfficialInfo()
-        .map { idList -> idList.associateWith { true } }
-        .stateIn(
-            viewModelScope,
-            SharingStarted.WhileSubscribed(5000),
-            emptyMap()
-        )
+    val articleOfficialMissingStates: StateFlow<Map<Long, Boolean>> = combine(
+        officialInfoDao.getArticlesWithMissingOfficialInfo(),
+        taskDao.getTasksInActionPhaseIds()
+    ) { missingIds, actionPhaseIds ->
+        val actionSet = actionPhaseIds.toSet()
+
+        // 只有那些 1.数据库判定缺失 且 2.爬取阶段已结束 的文章才显示警告
+        missingIds
+            .filter { it in actionSet }
+            .associateWith { true }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        emptyMap()
+    )
 }

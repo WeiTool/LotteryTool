@@ -68,10 +68,6 @@ import com.lotterytool.data.room.dynamicInfo.DynamicInfoDetail
 import com.lotterytool.data.room.officialInfo.OfficialInfoEntity
 import com.lotterytool.utils.formatPublishTime
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Screen
-// ═══════════════════════════════════════════════════════════════════════════════
-
 @Composable
 fun DynamicInfoScreen(
     viewModel: DynamicInfoViewModel = hiltViewModel(),
@@ -81,14 +77,15 @@ fun DynamicInfoScreen(
     val items by viewModel.dynamicList.collectAsStateWithLifecycle()
     val officialDetail by viewModel.officialDetail.collectAsStateWithLifecycle()
 
-    // Problem panel data
+    // 由于 DynamicProblemsViewModel 已按 type 隔离，各列表仅包含当前 type 的动态。
+    // 官方信息缺失 / 已过开奖时间在 type != 0 时自然为空，不需要 Screen 层额外判断。
     val parseErrors by problemsViewModel.parseErrors.collectAsStateWithLifecycle()
     val missingOfficialItems by problemsViewModel.missingOfficialInfoItems.collectAsStateWithLifecycle()
     val actionErrorItems by problemsViewModel.actionErrorItems.collectAsStateWithLifecycle()
     val expiredItems by problemsViewModel.expiredItems.collectAsStateWithLifecycle()
     val problemDynamicIds by problemsViewModel.problemDynamicIds.collectAsStateWithLifecycle()
 
-    // 主列表仅显示不在任何问题分组中的动态
+    // 主列表仅显示不在任何问题分组中的动态（问题动态已归入对应的展开卡片）
     val filteredItems = remember(items, problemDynamicIds) {
         items.filter { it.dynamicId !in problemDynamicIds }
     }
@@ -99,7 +96,7 @@ fun DynamicInfoScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-            // ── 问题汇总面板（仅在有问题时显示）────────────────────────────────
+
             val hasAnyProblems = parseErrors.isNotEmpty()
                     || missingOfficialItems.isNotEmpty()
                     || actionErrorItems.isNotEmpty()
@@ -120,7 +117,7 @@ fun DynamicInfoScreen(
                 }
             }
 
-            // ── 正常动态列表（已过滤掉所有问题动态）──────────────────────────
+            // ── 正常动态列表（已过滤掉所有问题动态，仅显示无任何异常的条目）────
             items(filteredItems, key = { it.dynamicId }) { info ->
                 DynamicInfoItem(
                     info = info,
@@ -132,7 +129,7 @@ fun DynamicInfoScreen(
             }
         }
 
-        // 详情对话框
+        // 官方抽奖详情对话框
         if (viewModel.selectedOfficialId != null) {
             OfficialDetailDialog(
                 detail = officialDetail,
@@ -144,9 +141,17 @@ fun DynamicInfoScreen(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Problems Panel — 三个可展开问题汇总卡片
+// Problems Panel — 四个可展开问题汇总卡片
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * 问题汇总面板，包含四类可展开的问题分组。
+ *
+ * 由于 [DynamicProblemsViewModel] 已按导航参数 type 隔离数据源，
+ * 调用方无需在此处做额外的 type 过滤：
+ * - type != 0 时，[missingOfficialItems] 和 [expiredItems] 自然为空，对应卡片不显示。
+ * - 每类卡片只展示属于当前页面 type 的动态条目。
+ */
 @Composable
 private fun ProblemsPanel(
     parseErrors: List<DynamicInfoDetail>,
@@ -172,7 +177,7 @@ private fun ProblemsPanel(
             modifier = Modifier.padding(bottom = 4.dp)
         )
 
-        // 1. 解析错误
+        // ── 1. 解析错误（所有 type 均可能出现）─────────────────────────────────
         if (parseErrors.isNotEmpty()) {
             ExpandableProblemSection(
                 title = "解析错误",
@@ -192,7 +197,7 @@ private fun ProblemsPanel(
             }
         }
 
-        // 2. 官方信息缺失
+        // ── 2. 官方信息缺失（仅 type == 0 时由 VM 提供数据，否则列表为空不显示）─
         if (missingOfficialItems.isNotEmpty()) {
             ExpandableProblemSection(
                 title = "官方信息缺失",
@@ -219,7 +224,7 @@ private fun ProblemsPanel(
             }
         }
 
-        // 3. 任务执行异常
+        // ── 3. 任务执行异常（所有 type 均可能出现）─────────────────────────────
         if (actionErrorItems.isNotEmpty()) {
             ExpandableProblemSection(
                 title = "任务执行异常",
@@ -246,7 +251,7 @@ private fun ProblemsPanel(
             }
         }
 
-        // 4. 已过开奖时间
+        // ── 4. 已过开奖时间（仅 type == 0 时由 VM 提供数据，否则列表为空不显示）─
         if (expiredItems.isNotEmpty()) {
             ExpandableProblemSection(
                 title = "已过开奖时间",
@@ -415,6 +420,11 @@ private fun ProblemBadgeWrapper(
 // DynamicInfoItem — 逻辑分发组件
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * 主列表中的动态条目。
+ * 因主列表已通过 [problemDynamicIds] 过滤掉所有问题动态，
+ * 正常情况下 [info.errorMessage] 为 null，[ErrorDynamicCard] 分支作为安全兜底保留。
+ */
 @Composable
 fun DynamicInfoItem(
     info: DynamicInfoDetail,
@@ -451,7 +461,8 @@ internal fun NormalDynamicCard(
     onRetryAction: () -> Unit
 ) {
     val isOfficial = info.type == 0
-    val isExpired = isOfficial && (info.officialTime ?: 0) < System.currentTimeMillis()
+    val currentSeconds = System.currentTimeMillis() / 1000L
+    val isExpired = isOfficial && (info.officialTime ?: 0) != 0L && (info.officialTime ?: 0) < currentSeconds
 
     val hasActionError = listOf(
         info.repostResult,
@@ -475,38 +486,52 @@ internal fun NormalDynamicCard(
             // ── 顶部：ID + 状态图标 + 类型标签 ──────────────────────────────
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(text = "ID: ${info.dynamicId}", style = MaterialTheme.typography.labelSmall)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isExpired) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = "已过期",
-                            tint = Color(0xFFFFC107),
-                            modifier = Modifier
-                                .size(16.dp)
-                                .padding(end = 4.dp)
-                        )
+                Column {
+                    Text(
+                        text = "ID: ${info.dynamicId}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
+
+                    if (isExpired || hasActionError) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 2.dp)
+                        ) {
+                            if (isExpired) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = "已过期",
+                                    tint = Color(0xFFFFC107),
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .padding(end = 4.dp)
+                                )
+                            }
+                            if (hasActionError) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudOff,
+                                    contentDescription = "任务执行异常",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .padding(end = 4.dp)
+                                )
+                            }
+                        }
                     }
-                    if (hasActionError) {
-                        Icon(
-                            imageVector = Icons.Default.CloudOff,
-                            contentDescription = "任务执行异常",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier
-                                .size(16.dp)
-                                .padding(end = 4.dp)
-                        )
-                    }
-                    if (isOfficial) {
-                        Text(
-                            "官方抽奖(点击显示详情)",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
+                }
+
+                if (isOfficial) {
+                    Text(
+                        "官方抽奖",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
@@ -876,9 +901,9 @@ fun PreviewErrorDynamicCard() {
     }
 }
 
-@Preview(showBackground = true, name = "问题面板预览")
+@Preview(showBackground = true, name = "问题面板预览 - 官方抽奖页 (type=0)")
 @Composable
-fun PreviewProblemsPanel() {
+fun PreviewProblemsPanel_Official() {
     MaterialTheme {
         val mockNormal = DynamicInfoDetail(
             dynamicId = 111L, type = 0,
@@ -890,8 +915,8 @@ fun PreviewProblemsPanel() {
             articleId = 1L, uid = 0L, rid = 0L, errorMessage = null
         )
         val mockAction = DynamicInfoDetail(
-            dynamicId = 222L, type = 1,
-            description = "普通动态，任务失败", content = "内容",
+            dynamicId = 222L, type = 0,
+            description = "官方动态，任务失败", content = "内容",
             timestamp = System.currentTimeMillis(),
             officialTime = null, officialIsError = null,
             repostResult = "失败: 403", likeResult = "成功",
@@ -899,7 +924,7 @@ fun PreviewProblemsPanel() {
             articleId = 1L, uid = 0L, rid = 0L, errorMessage = null
         )
         val mockError = DynamicInfoDetail(
-            dynamicId = 333L, type = 1,
+            dynamicId = 333L, type = 0,
             description = "", content = "",
             timestamp = System.currentTimeMillis(),
             officialTime = null, officialIsError = null,
@@ -912,7 +937,7 @@ fun PreviewProblemsPanel() {
             dynamicId = 444L, type = 0,
             description = "已过开奖时间的官方抽奖动态", content = "",
             timestamp = System.currentTimeMillis() - 86400000 * 3,
-            officialTime = System.currentTimeMillis() / 1000L - 3600L, // 1小时前过期
+            officialTime = System.currentTimeMillis() / 1000L - 3600L,
             officialIsError = false,
             repostResult = "成功", likeResult = "成功",
             replyResult = "成功", followResult = "成功",
@@ -924,6 +949,45 @@ fun PreviewProblemsPanel() {
                 missingOfficialItems = listOf(mockNormal),
                 actionErrorItems = listOf(mockAction),
                 expiredItems = listOf(mockExpired),
+                onRetryExtraction = {},
+                onRetryOfficial = {},
+                onRetryAction = {},
+                onDelete = {}
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "问题面板预览 - 普通动态页 (type=1)")
+@Composable
+fun PreviewProblemsPanel_Normal() {
+    MaterialTheme {
+        // 普通动态页只会有解析错误 / 任务执行异常，不会出现官方信息缺失 / 已过开奖时间
+        val mockAction = DynamicInfoDetail(
+            dynamicId = 555L, type = 1,
+            description = "普通动态，任务失败", content = "内容",
+            timestamp = System.currentTimeMillis(),
+            officialTime = null, officialIsError = null,
+            repostResult = "失败: 403", likeResult = "成功",
+            replyResult = null, followResult = "风险账号",
+            articleId = 1L, uid = 0L, rid = 0L, errorMessage = null
+        )
+        val mockError = DynamicInfoDetail(
+            dynamicId = 666L, type = 1,
+            description = "", content = "",
+            timestamp = System.currentTimeMillis(),
+            officialTime = null, officialIsError = null,
+            repostResult = null, likeResult = null,
+            replyResult = null, followResult = null,
+            articleId = 1L, uid = 0L, rid = 0L,
+            errorMessage = "ConnectTimeoutException: 网络超时"
+        )
+        Column(modifier = Modifier.padding(8.dp)) {
+            ProblemsPanel(
+                parseErrors = listOf(mockError),
+                missingOfficialItems = emptyList(),  // type=1 时 VM 不提供此数据
+                actionErrorItems = listOf(mockAction),
+                expiredItems = emptyList(),           // type=1 时 VM 不提供此数据
                 onRetryExtraction = {},
                 onRetryOfficial = {},
                 onRetryAction = {},

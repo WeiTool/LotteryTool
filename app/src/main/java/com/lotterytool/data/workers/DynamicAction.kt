@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlin.random.Random
 
 class DynamicAction @Inject constructor(
     private val dynamicInfoDao: DynamicInfoDao,
@@ -77,7 +78,7 @@ class DynamicAction @Inject constructor(
             }
 
             if (index < total - 1) {
-                delay(3000)
+                delay(Random.nextLong(1000, 2000))
             }
         }
 
@@ -110,7 +111,7 @@ class DynamicAction @Inject constructor(
                 }
 
             // 注意：在 NonCancellable 块内的 delay 也是不会被取消的
-            delay(3000)
+            delay(Random.nextLong(1000, 2000))
 
             // 2. 执行点赞
             val likeRes = when (val res = likeRepository.executeLike(cookie, csrf, dynamicId)) {
@@ -118,7 +119,7 @@ class DynamicAction @Inject constructor(
                 is FetchResult.Error -> res.message
             }
 
-            delay(3000)
+            delay(Random.nextLong(1000, 2000))
 
             // 3. 执行评论 (使用详情解析阶段存下的 rid)
             val replyRes =
@@ -127,7 +128,7 @@ class DynamicAction @Inject constructor(
                     is FetchResult.Error -> res.message
                 }
 
-            delay(3000)
+            delay(Random.nextLong(1000, 2000))
 
             // 4. 执行关注 (使用详情解析阶段存下的 uid)
             val followRes =
@@ -136,7 +137,7 @@ class DynamicAction @Inject constructor(
                     is FetchResult.Error -> res.message
                 }
 
-            delay(3000)
+            delay(Random.nextLong(1000, 2000))
 
             // 5. 将这一整套动作的结果存入数据库
             val actionEntity = ActionEntity(

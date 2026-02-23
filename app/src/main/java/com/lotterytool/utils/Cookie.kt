@@ -8,7 +8,7 @@ data class BiliAuth(
 ){
     // 直接输出带前缀的 Cookie 格式
     val sessDataCookie: String get() = "SESSDATA=$sessData"
-    val csrfCookie: String get() = "bili_jct=$csrf"
+    val csrfCookie: String get() = csrf
 }
 
 /**

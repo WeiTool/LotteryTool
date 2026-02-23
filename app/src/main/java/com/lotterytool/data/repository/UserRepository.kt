@@ -6,13 +6,7 @@ import com.lotterytool.data.room.user.UserEntity
 import com.lotterytool.utils.FetchResult
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import java.util.Calendar
 import javax.inject.Inject
-import kotlin.apply
-import kotlin.let
-import kotlin.text.isNullOrEmpty
-import kotlin.text.substringAfterLast
-import kotlin.text.substringBeforeLast
 
 class UserRepository @Inject constructor(
     private val apiService: ApiServices,
@@ -23,17 +17,14 @@ class UserRepository @Inject constructor(
             val users = userDao.getAllUsers()
             val errorList = mutableListOf<String>()
 
-            val expiredUsers = users.filter { isDataExpired(it.lastUpdated) }
-
-            expiredUsers.forEachIndexed { index, user ->
+            users.forEachIndexed { index, user ->
                 val result = fetchUser(user.SESSDATA, user.CSRF)
 
                 if (result is FetchResult.Error) {
-                    // 存储格式: "mid:错误信息"
                     errorList.add("${user.mid}:${result.message}")
                 }
 
-                if (index < expiredUsers.size - 1) {
+                if (index < users.size - 1) {
                     delay(1000L + (0..500).random())
                 }
             }
@@ -41,7 +32,6 @@ class UserRepository @Inject constructor(
             if (errorList.isEmpty()) {
                 FetchResult.Success(Unit)
             } else {
-                // 用分号把所有错误连成一个长字符串
                 FetchResult.Error(errorList.joinToString(";"))
             }
         } catch (e: Exception) {
@@ -101,16 +91,6 @@ class UserRepository @Inject constructor(
         } catch (e: Exception) {
             FetchResult.Error(e.localizedMessage ?: "网络请求失败")
         }
-    }
-
-    private fun isDataExpired(lastUpdated: Long): Boolean {
-        // 当前时间
-        val today = Calendar.getInstance()
-        // 上次更新的时间
-        val lastUpdateDate = Calendar.getInstance().apply { timeInMillis = lastUpdated }
-        // 比较年份和天数，如果有一项不同，说明是之前某天的数据
-        return today.get(Calendar.DAY_OF_YEAR) != lastUpdateDate.get(Calendar.DAY_OF_YEAR) ||
-                today.get(Calendar.YEAR) != lastUpdateDate.get(Calendar.YEAR)
     }
 
     //提取Wbi签名的数字部分

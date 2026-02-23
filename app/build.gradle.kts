@@ -64,6 +64,7 @@ dependencies {
     // Room 依赖
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.appcompat)
     ksp(libs.androidx.room.compiler) // 使用 KSP 进行编译处理
 
     // Hilt

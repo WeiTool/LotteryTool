@@ -11,6 +11,19 @@
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <!--
+        WAKE_LOCK：持有 CPU 唤醒锁，确保熄屏 / 按 Home 后协程仍能继续执行。
+        WorkManager 内部虽会自动申请，但显式声明可防止部分国产 ROM 拦截。
+    -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
+        REQUEST_IGNORE_BATTERY_OPTIMIZATIONS：
+        允许在运行时弹出系统对话框，引导用户将本应用加入省电白名单。
+        这是在国产 ROM（MIUI / EMUI / OriginOS 等）上保持后台存活的关键权限。
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application
         android:name=".LotteryToolApp"
         android:allowBackup="true"
@@ -42,6 +55,11 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
     </application>
 

@@ -112,7 +112,7 @@ interface ApiServices {
     suspend fun repost(
         @Header("Cookie") cookie: String,
         @Field("dynamic_id") dynamicId: Long,
-        @Field("content") content: String = "",
+        @Field("content") content: String,
         @Field("csrf_token") csrf: String
     ): ActionResponse
 

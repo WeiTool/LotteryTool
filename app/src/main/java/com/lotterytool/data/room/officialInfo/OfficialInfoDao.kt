@@ -50,14 +50,18 @@ interface OfficialInfoDao {
      * 3. 筛选 T2.dynamicId IS NULL（说明完全没抓取过）
      * 或者 T2.isError = 1（说明抓取过但失败了，记录为空实体）。
      */
-    @Query(
-        """
-        SELECT DISTINCT T1.articleId
-        FROM dynamic_info AS T1
-        LEFT JOIN official_info AS T2 ON T1.dynamicId = T2.dynamicId
-        WHERE T2.dynamicId IS NULL OR T2.isError = 1
-    """
-    )
+    @Query("""
+    SELECT DISTINCT T1.articleId
+    FROM dynamic_info AS T1
+    LEFT JOIN official_info AS T2 ON T1.dynamicId = T2.dynamicId
+    WHERE T1.type = 0  -- 只检查官方类型的动态
+      AND (
+          T2.dynamicId IS NULL        -- 完全没记录
+          OR T2.isError = 1           -- 明确记录了错误
+          OR T2.time = 0              -- 有记录但时间戳非法（默认值）
+          OR T2.firstPrizeCmt = ''    -- 或者检查关键文本是否为空
+      )
+""")
     fun getArticlesWithMissingOfficialInfo(): Flow<List<Long>>
 
     @Query(
