@@ -17,13 +17,6 @@
     -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!--
-        REQUEST_IGNORE_BATTERY_OPTIMIZATIONS：
-        允许在运行时弹出系统对话框，引导用户将本应用加入省电白名单。
-        这是在国产 ROM（MIUI / EMUI / OriginOS 等）上保持后台存活的关键权限。
-    -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
     <application
         android:name=".LotteryToolApp"
         android:allowBackup="true"
@@ -36,14 +29,20 @@
         android:theme="@style/Theme.LotteryTool">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".CrashActivity"
+            android:process=":crash_logger"
             android:exported="true"
-            android:theme="@style/Theme.LotteryTool">
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:theme="@style/Theme.LotteryTool" />
 
         <provider
             android:name="androidx.startup.InitializationProvider"

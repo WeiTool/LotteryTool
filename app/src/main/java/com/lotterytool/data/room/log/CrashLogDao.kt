@@ -7,9 +7,6 @@ import androidx.room.Query
 
 @Dao
 interface CrashLogDao {
-    // 异步版本供常规 UI/逻辑逻辑调用
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCrash(entity: CrashLogEntity)
 
     // 同步版本专供 CrashHandler 调用，避免在崩溃现场启动协程作用域
     @Insert(onConflict = OnConflictStrategy.REPLACE)
