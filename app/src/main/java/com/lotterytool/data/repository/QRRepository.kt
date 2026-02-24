@@ -18,7 +18,12 @@ class QRRepository @Inject constructor(
                 FetchResult.Error("获取失败: ${response.message}")
             }
         } catch (e: Exception) {
-            FetchResult.Error(e.message ?: "网络错误")
+            val userFriendlyMessage = when (e) {
+                is java.net.UnknownHostException -> "无法连接服务器，请检查网络设置"
+                is java.net.SocketTimeoutException -> "连接超时，请稍后重试"
+                else -> e.message ?: "网络异常"
+            }
+            FetchResult.Error(userFriendlyMessage)
         }
     }
 
