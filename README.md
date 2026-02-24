@@ -1,8 +1,8 @@
 # LotteryTool - B站抽奖自动化工具
 
-[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.0-blue.svg)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-blue.svg)](https://kotlinlang.org)
 [![Android](https://img.shields.io/badge/Android-24%2B-green.svg)](https://developer.android.com)
-[![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-1.7.8-orange.svg)](https://developer.android.com/jetpack/compose)
+[![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-2026.02.00-orange.svg)](https://developer.android.com/jetpack/compose)
 
 ## 🎯 项目简介
 
@@ -95,6 +95,10 @@ app/src/main/java/com/lotterytool/
 3. **开始任务**：选择要参与的抽奖动态并启动自动化任务
 4. **监控进度**：在应用界面实时查看任务执行状态
 5. **查看结果**：任务完成后查看参与结果和错误信息
+
+### 直接安装APP
+**右侧发行版**：右侧发行版选择最新版安装
+
 
 ## ⚠️ 注意事项
 
