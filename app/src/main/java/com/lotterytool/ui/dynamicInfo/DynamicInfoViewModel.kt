@@ -18,6 +18,8 @@ import com.lotterytool.data.room.user.UserDao
 import com.lotterytool.data.room.user.UserEntity
 import com.lotterytool.data.workers.DynamicAction
 import com.lotterytool.utils.FetchResult
+import com.lotterytool.utils.ReplyMessage
+import com.lotterytool.utils.RepostContent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,9 +37,8 @@ class DynamicInfoViewModel @Inject constructor(
     private val removeRepository: RemoveRepository,
     private val dynamicAction: DynamicAction,
     private val userDao: UserDao,
-    // 注入 DAO 用于读取动态列表与官方抽奖详情
-    private val dynamicInfoDao: DynamicInfoDao,
     private val officialInfoDao: OfficialInfoDao,
+    dynamicInfoDao: DynamicInfoDao,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -137,25 +138,70 @@ class DynamicInfoViewModel @Inject constructor(
     }
 
     // ── 重试：任务执行（转发 / 点赞 / 评论 / 关注）───────────────────────────
+
+    /**
+     * 当前待处理的动态信息（用于显示确认 Dialog）。
+     * 非 null 时表示 Dialog 应当呈现。
+     */
+    var pendingRetryInfo by mutableStateOf<DynamicInfoDetail?>(null)
+        private set
+
+    /**
+     * Dialog 内部是否正在执行重试任务。
+     * true 时显示 loading 转圈，按钮禁用；false 且 [pendingRetryInfo] 非 null 时显示确认按钮。
+     */
+    var isRetrying by mutableStateOf(false)
+        private set
+
+    fun showRetryDialog(info: DynamicInfoDetail) {
+        pendingRetryInfo = info
+    }
+
+    fun dismissRetryDialog() {
+        // 只在未执行任务时允许手动关闭
+        if (!isRetrying) {
+            pendingRetryInfo = null
+        }
+    }
+
+    /**
+     * 执行重试：
+     * 1. 保留 Dialog 并切换到 loading 状态（转圈）。
+     * 2. 执行 [DynamicAction.performAction]，内部已跳过成功的步骤。
+     * 3. 完成后关闭 Dialog，Room Flow 自动刷新卡片展示。
+     *    若该动态所有步骤均成功，[DynamicProblemsViewModel] 的 [actionErrorItems] 将
+     *    自动将其从可展开卡片中移除，无需额外处理。
+     */
     fun retryAction(info: DynamicInfoDetail) {
         viewModelScope.launch {
             val currentUser = user.value
             val cookie = currentUser?.SESSDATA
             val csrf = currentUser?.CSRF
+
             if (cookie.isNullOrBlank() || csrf.isNullOrBlank()) {
-                _errorMessage.value = "登录状态失效或未登录，请重新登录"
+                _errorMessage.value = "登录状态失效，请重新登录"
+                pendingRetryInfo = null
                 return@launch
             }
+
+            // 开始执行：进入 loading 状态，Dialog 保持显示
+            isRetrying = true
+
             val result = dynamicAction.performAction(
                 dynamicId = info.dynamicId,
                 cookie = cookie,
                 csrf = csrf,
-                content = "转发抽奖",
-                message = "来了来了"
+                content = RepostContent.getRandom(),
+                message = ReplyMessage.getRandom()
             )
+
             if (result is FetchResult.Error) {
-                _errorMessage.value = "执行任务失败: ${result.message}"
+                _errorMessage.value = "执行失败: ${result.message}"
             }
+
+            // 执行完毕：关闭 Dialog
+            isRetrying = false
+            pendingRetryInfo = null
         }
     }
 

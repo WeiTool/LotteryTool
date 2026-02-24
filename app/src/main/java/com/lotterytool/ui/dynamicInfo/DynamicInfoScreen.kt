@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -58,7 +59,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -111,7 +111,8 @@ fun DynamicInfoScreen(
                         expiredItems = expiredItems,
                         onRetryExtraction = { viewModel.retryExtraction(it) },
                         onRetryOfficial = { viewModel.showOfficialDetail(it.dynamicId) },
-                        onRetryAction = { viewModel.retryAction(it) },
+                        // 改为弹出确认 Dialog，而非直接执行
+                        onRetryAction = { viewModel.showRetryDialog(it) },
                         onDelete = { viewModel.deleteDynamic(it) }
                     )
                 }
@@ -124,7 +125,8 @@ fun DynamicInfoScreen(
                     onRetry = { viewModel.retryExtraction(info) },
                     onShowOfficial = { viewModel.showOfficialDetail(info.dynamicId) },
                     onDeleteDynamic = { viewModel.deleteDynamic(info) },
-                    onRetryAction = { viewModel.retryAction(info) }
+                    // 改为弹出确认 Dialog
+                    onRetryAction = { viewModel.showRetryDialog(info) }
                 )
             }
         }
@@ -136,6 +138,11 @@ fun DynamicInfoScreen(
                 onDismiss = { viewModel.dismissDialog() },
                 onRetry = { viewModel.retryOfficial(it) }
             )
+        }
+
+        // 重试任务确认/执行对话框（pendingRetryInfo 非 null 时显示）
+        if (viewModel.pendingRetryInfo != null) {
+            RetryActionDialog(viewModel = viewModel)
         }
     }
 }
@@ -834,165 +841,140 @@ private fun DetailRow(label: String, people: Int, content: String) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Previews
+// RetryActionDialog — 重试任务确认 + 执行中转圈
 // ═══════════════════════════════════════════════════════════════════════════════
 
-@Preview(showBackground = true, name = "任务全部成功状态")
+/**
+ * 重新执行失败 action 的 Dialog。
+ *
+ * 行为逻辑：
+ * - **确认阶段**（[DynamicInfoViewModel.isRetrying] == false）：
+ *   显示待处理动态的 ID、失败步骤摘要，以及"取消"/"开始执行"按钮。
+ * - **执行阶段**（[DynamicInfoViewModel.isRetrying] == true）：
+ *   隐藏按钮，显示 [CircularProgressIndicator] 和提示文字，Dialog 不可手动关闭。
+ * - **完成后**：ViewModel 将 [DynamicInfoViewModel.pendingRetryInfo] 置 null，
+ *   Dialog 自动消失；Room Flow 驱动卡片数据实时刷新，若所有步骤均成功则条目从
+ *   "任务执行异常"展开卡片中自动移除。
+ */
 @Composable
-fun PreviewNormalDynamicCardSuccess() {
-    MaterialTheme {
-        val mockInfo = DynamicInfoDetail(
-            dynamicId = 123456789L,
-            type = 0,
-            description = "恭喜大家！这是一个官方抽奖动态的描述内容，点击可以查看奖品详情。",
-            content = "",
-            timestamp = System.currentTimeMillis(),
-            officialTime = System.currentTimeMillis() + 86400000,
-            repostResult = "成功",
-            likeResult = "成功",
-            replyResult = "成功",
-            followResult = "成功",
-            articleId = 0,
-            uid = 0,
-            rid = 0,
-            errorMessage = null,
-            officialIsError = false
-        )
-        NormalDynamicCard(info = mockInfo, onDelete = {}, onRetryAction = {})
-    }
-}
+fun RetryActionDialog(viewModel: DynamicInfoViewModel) {
+    val info = viewModel.pendingRetryInfo ?: return
+    val isRetrying = viewModel.isRetrying
 
-@Preview(showBackground = true, name = "任务异常与待执行状态")
-@Composable
-fun PreviewNormalDynamicCardWithErrors() {
-    MaterialTheme {
-        val mockInfo = DynamicInfoDetail(
-            dynamicId = 987654321L,
-            type = 2,
-            description = "",
-            content = "这是一个普通的动态内容，其中部分任务执行失败了，需要检查网络或登录状态。",
-            timestamp = System.currentTimeMillis() - 3600000,
-            officialTime = null,
-            repostResult = "成功",
-            likeResult = "失败: 403",
-            replyResult = null,
-            followResult = "风险账号",
-            articleId = 0,
-            uid = 0,
-            rid = 0,
-            errorMessage = null,
-            officialIsError = false
-        )
-        NormalDynamicCard(info = mockInfo, onDelete = {}, onRetryAction = {})
+    // 计算失败的步骤列表，供用户确认时参考
+    val failedSteps = buildList {
+        if (info.repostResult != null && info.repostResult != "成功") add("转发 (${info.repostResult})")
+        if (info.likeResult   != null && info.likeResult   != "成功") add("点赞 (${info.likeResult})")
+        if (info.replyResult  != null && info.replyResult  != "成功") add("评论 (${info.replyResult})")
+        if (info.followResult != null
+            && info.followResult != "成功"
+            && info.followResult != "已经关注用户，无法重复关注"
+        ) add("关注 (${info.followResult})")
     }
-}
 
-@Preview(showBackground = true, name = "解析错误卡片预览")
-@Composable
-fun PreviewErrorDynamicCard() {
-    MaterialTheme {
-        Column(modifier = Modifier.padding(8.dp)) {
-            ErrorDynamicCard(
-                dynamicId = 123456789L,
-                errorMessage = "无法解析该动态内容。原因：网络请求超时 (ConnectTimeoutException)，请检查网络连接后重试。",
-                onRetry = {}
-            )
+    AlertDialog(
+        // 执行中禁止点击外部关闭
+        onDismissRequest = { if (!isRetrying) viewModel.dismissRetryDialog() },
+        title = {
+            Text(text = if (isRetrying) "正在执行…" else "重新执行任务")
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (isRetrying) {
+                    // ── 执行阶段：转圈 + 提示 ─────────────────────────────
+                    Spacer(modifier = Modifier.height(8.dp))
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(48.dp),
+                        strokeWidth = 4.dp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "正在重新处理失败的步骤，请稍候…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                } else {
+                    // ── 确认阶段：显示待重试信息 ──────────────────────────
+                    Text(
+                        text = "ID: ${info.dynamicId}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (failedSteps.isNotEmpty()) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        Text(
+                            text = "以下失败步骤将被重新执行：",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        failedSteps.forEach { step ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 4.dp, top = 2.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Cancel,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = step,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        Text(
+                            text = "已成功的步骤将被跳过。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        // 理论上不应出现，但作为兜底
+                        Text(
+                            text = "没有检测到失败的步骤，是否仍要重新执行？",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (!isRetrying) {
+                TextButton(onClick = { viewModel.retryAction(info) }) {
+                    Text("开始执行")
+                }
+            }
+        },
+        dismissButton = {
+            if (!isRetrying) {
+                TextButton(onClick = { viewModel.dismissRetryDialog() }) {
+                    Text("取消")
+                }
+            }
         }
-    }
-}
-
-@Preview(showBackground = true, name = "问题面板预览 - 官方抽奖页 (type=0)")
-@Composable
-fun PreviewProblemsPanel_Official() {
-    MaterialTheme {
-        val mockNormal = DynamicInfoDetail(
-            dynamicId = 111L, type = 0,
-            description = "官方动态，缺少开奖信息", content = "",
-            timestamp = System.currentTimeMillis(),
-            officialTime = null, officialIsError = null,
-            repostResult = "成功", likeResult = "成功",
-            replyResult = "成功", followResult = "成功",
-            articleId = 1L, uid = 0L, rid = 0L, errorMessage = null
-        )
-        val mockAction = DynamicInfoDetail(
-            dynamicId = 222L, type = 0,
-            description = "官方动态，任务失败", content = "内容",
-            timestamp = System.currentTimeMillis(),
-            officialTime = null, officialIsError = null,
-            repostResult = "失败: 403", likeResult = "成功",
-            replyResult = null, followResult = "风险账号",
-            articleId = 1L, uid = 0L, rid = 0L, errorMessage = null
-        )
-        val mockError = DynamicInfoDetail(
-            dynamicId = 333L, type = 0,
-            description = "", content = "",
-            timestamp = System.currentTimeMillis(),
-            officialTime = null, officialIsError = null,
-            repostResult = null, likeResult = null,
-            replyResult = null, followResult = null,
-            articleId = 1L, uid = 0L, rid = 0L,
-            errorMessage = "ConnectTimeoutException: 网络超时"
-        )
-        val mockExpired = DynamicInfoDetail(
-            dynamicId = 444L, type = 0,
-            description = "已过开奖时间的官方抽奖动态", content = "",
-            timestamp = System.currentTimeMillis() - 86400000 * 3,
-            officialTime = System.currentTimeMillis() / 1000L - 3600L,
-            officialIsError = false,
-            repostResult = "成功", likeResult = "成功",
-            replyResult = "成功", followResult = "成功",
-            articleId = 1L, uid = 0L, rid = 0L, errorMessage = null
-        )
-        Column(modifier = Modifier.padding(8.dp)) {
-            ProblemsPanel(
-                parseErrors = listOf(mockError),
-                missingOfficialItems = listOf(mockNormal),
-                actionErrorItems = listOf(mockAction),
-                expiredItems = listOf(mockExpired),
-                onRetryExtraction = {},
-                onRetryOfficial = {},
-                onRetryAction = {},
-                onDelete = {}
-            )
-        }
-    }
-}
-
-@Preview(showBackground = true, name = "问题面板预览 - 普通动态页 (type=1)")
-@Composable
-fun PreviewProblemsPanel_Normal() {
-    MaterialTheme {
-        // 普通动态页只会有解析错误 / 任务执行异常，不会出现官方信息缺失 / 已过开奖时间
-        val mockAction = DynamicInfoDetail(
-            dynamicId = 555L, type = 1,
-            description = "普通动态，任务失败", content = "内容",
-            timestamp = System.currentTimeMillis(),
-            officialTime = null, officialIsError = null,
-            repostResult = "失败: 403", likeResult = "成功",
-            replyResult = null, followResult = "风险账号",
-            articleId = 1L, uid = 0L, rid = 0L, errorMessage = null
-        )
-        val mockError = DynamicInfoDetail(
-            dynamicId = 666L, type = 1,
-            description = "", content = "",
-            timestamp = System.currentTimeMillis(),
-            officialTime = null, officialIsError = null,
-            repostResult = null, likeResult = null,
-            replyResult = null, followResult = null,
-            articleId = 1L, uid = 0L, rid = 0L,
-            errorMessage = "ConnectTimeoutException: 网络超时"
-        )
-        Column(modifier = Modifier.padding(8.dp)) {
-            ProblemsPanel(
-                parseErrors = listOf(mockError),
-                missingOfficialItems = emptyList(),  // type=1 时 VM 不提供此数据
-                actionErrorItems = listOf(mockAction),
-                expiredItems = emptyList(),           // type=1 时 VM 不提供此数据
-                onRetryExtraction = {},
-                onRetryOfficial = {},
-                onRetryAction = {},
-                onDelete = {}
-            )
-        }
-    }
+    )
 }

@@ -97,49 +97,67 @@ class DynamicAction @Inject constructor(
         content: String,
         message: String
     ): FetchResult<Unit> = withContext(NonCancellable) {
-        // 使用 NonCancellable 保证：一旦开始执行某个 ID 的操作，
-        // 即使 App 被划掉，也会坚持跑完 转发->延迟->点赞->延迟->评论->延迟->关注->存库 的全过程。
         return@withContext try {
             val info = dynamicInfoDao.getInfoById(dynamicId)
                 ?: return@withContext FetchResult.Error("未找到动态详情")
 
+            // 0. 获取现有的执行记录（如果有）
+            val existingAction = actionDao.getActionById(dynamicId)
+
+            // 定义辅助函数：检查是否需要执行该步骤
+            suspend fun shouldExecute(currentRes: String?): Boolean {
+                // 如果结果已经是成功，或者属于幂等性错误（如已关注），则不需要重新执行
+                return currentRes == null || (currentRes != "成功" && currentRes != "已经关注用户，无法重复关注")
+            }
+
             // 1. 执行转发
-            val repostRes =
+            val repostRes = if (shouldExecute(existingAction?.repostResult)) {
                 when (val res = repostRepository.executeRepost(cookie, csrf, dynamicId, content)) {
                     is FetchResult.Success -> "成功"
                     is FetchResult.Error -> res.message
                 }
-
-            // 注意：在 NonCancellable 块内的 delay 也是不会被取消的
-            delay(Random.nextLong(1000, 2000))
-
-            // 2. 执行点赞
-            val likeRes = when (val res = likeRepository.executeLike(cookie, csrf, dynamicId)) {
-                is FetchResult.Success -> "成功"
-                is FetchResult.Error -> res.message
+            } else {
+                existingAction?.repostResult ?: "成功"
             }
 
             delay(Random.nextLong(1000, 2000))
 
-            // 3. 执行评论 (使用详情解析阶段存下的 rid)
-            val replyRes =
+            // 2. 执行点赞
+            val likeRes = if (shouldExecute(existingAction?.likeResult)) {
+                when (val res = likeRepository.executeLike(cookie, csrf, dynamicId)) {
+                    is FetchResult.Success -> "成功"
+                    is FetchResult.Error -> res.message
+                }
+            } else {
+                existingAction?.likeResult ?: "成功"
+            }
+
+            delay(Random.nextLong(1000, 2000))
+
+            // 3. 执行评论
+            val replyRes = if (shouldExecute(existingAction?.replyResult)) {
                 when (val res = replyRepository.executeReply(cookie, 11, info.rid, message, csrf)) {
                     is FetchResult.Success -> "成功"
                     is FetchResult.Error -> res.message
                 }
+            } else {
+                existingAction?.replyResult ?: "成功"
+            }
 
             delay(Random.nextLong(1000, 2000))
 
-            // 4. 执行关注 (使用详情解析阶段存下的 uid)
-            val followRes =
+            // 4. 执行关注
+            val followRes = if (shouldExecute(existingAction?.followResult)) {
                 when (val res = followRepository.executeFollow(cookie, info.uid, 1, csrf)) {
                     is FetchResult.Success -> "成功"
                     is FetchResult.Error -> res.message
                 }
+            } else {
+                existingAction?.followResult ?: "成功"
+            }
 
-            delay(Random.nextLong(1000, 2000))
-
-            // 5. 将这一整套动作的结果存入数据库
+            // 5. 更新数据库：Room 的 insertAction 通常配置为 OnConflictStrategy.REPLACE
+            // 这会用包含新结果的 Entity 覆盖旧记录
             val actionEntity = ActionEntity(
                 dynamicId = dynamicId,
                 repostResult = repostRes,
@@ -151,7 +169,6 @@ class DynamicAction @Inject constructor(
 
             FetchResult.Success(Unit)
         } catch (e: Exception) {
-            // 如果是由于网络中断或其他硬错误导致，返回错误
             FetchResult.Error(e.localizedMessage ?: "执行动作时发生异常")
         }
     }

@@ -1,5 +1,3 @@
-import org.gradle.kotlin.dsl.implementation
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -16,7 +14,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "com.lotterytool.HiltTestRunner"
     }
@@ -30,6 +28,7 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -38,6 +37,7 @@ android {
         compose = true
     }
     testNamespace = "com.lotterytool.test"
+
 }
 
 dependencies {
@@ -59,7 +59,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose) // ViewModel
     implementation(libs.androidx.navigation.compose) // Navigation
     implementation(libs.coil.compose)
-    implementation("com.google.zxing:core:3.5.3")
+    implementation(libs.core)
 
     // Room 依赖
     implementation(libs.androidx.room.runtime)
