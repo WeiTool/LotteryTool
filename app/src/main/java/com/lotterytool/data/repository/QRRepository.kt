@@ -29,7 +29,7 @@ class QRRepository @Inject constructor(
 
     suspend fun executionQR(qrcodeKey: String): FetchResult<String> {
         return try {
-            val response = apiServices.QR(qrcodeKey = qrcodeKey)
+            val response = apiServices.qr(qrcodeKey = qrcodeKey)
 
             // 1. 检查 API 请求本身是否成功（假设外层 code=0 代表接口调通）
             if (response.code == 0) {

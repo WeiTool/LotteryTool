@@ -43,8 +43,7 @@ class CrashHandler(private val db: AppDatabase) : Thread.UncaughtExceptionHandle
 
             writeThread.start()
 
-            // 3. 等待写入完成（最多 500ms），避免阻塞时间过长导致系统判定 ANR
-            writeThread.join(500)
+            writeThread.join(1000)
 
         } catch (e: Exception) {
             // 兜底逻辑：记录逻辑本身抛出异常时，确保不干扰后续系统处理

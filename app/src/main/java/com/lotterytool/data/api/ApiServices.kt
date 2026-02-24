@@ -3,6 +3,7 @@ package com.lotterytool.data.api
 import com.lotterytool.data.models.ActionResponse
 import com.lotterytool.data.models.ApplicationQR
 import com.lotterytool.data.models.ArticleResponse
+import com.lotterytool.data.models.CheckVersionResponse
 import com.lotterytool.data.models.DynamicIdResponse
 import com.lotterytool.data.models.DynamicInfoResponse
 import com.lotterytool.data.models.Execution
@@ -11,6 +12,7 @@ import com.lotterytool.data.models.OfficialLotteryResponse
 import com.lotterytool.data.models.QRResponse
 import com.lotterytool.data.models.RemoveRequest
 import com.lotterytool.data.models.UserResponse
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
@@ -67,11 +69,17 @@ interface ApiServices {
     ): QRResponse<ApplicationQR>
 
     @GET("https://passport.bilibili.com/x/passport-login/web/qrcode/poll")
-    suspend fun QR(
+    suspend fun qr(
         @Header("User-Agent") ua: String = USER_AGENT,
         @Query("qrcode_key") qrcodeKey: String,
     ): QRResponse<Execution>
 
+    @GET("https://gitee.com/api/v5/repos/weitool/lottery-tool/releases")
+    suspend fun checkVersion(
+        @Query("page") page : Int = 1,
+        @Query("per_page") perPage: Int = 1,
+        @Query("direction") direction: String = "desc"
+    ): Response<List<CheckVersionResponse>>
 
     //----------------POST------------------
     // 点赞

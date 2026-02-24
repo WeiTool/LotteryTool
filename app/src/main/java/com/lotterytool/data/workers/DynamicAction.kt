@@ -105,7 +105,7 @@ class DynamicAction @Inject constructor(
             val existingAction = actionDao.getActionById(dynamicId)
 
             // 定义辅助函数：检查是否需要执行该步骤
-            suspend fun shouldExecute(currentRes: String?): Boolean {
+            fun shouldExecute(currentRes: String?): Boolean {
                 // 如果结果已经是成功，或者属于幂等性错误（如已关注），则不需要重新执行
                 return currentRes == null || (currentRes != "成功" && currentRes != "已经关注用户，无法重复关注")
             }

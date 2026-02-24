@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.lotterytool.data.api.ApiServices
 import com.lotterytool.data.repository.ArticleRepository
+import com.lotterytool.data.repository.CheckVersionRepository
 import com.lotterytool.data.repository.DynamicIdRepository
 import com.lotterytool.data.repository.DynamicInfoRepository
 import com.lotterytool.data.repository.OfficialRepository
@@ -106,4 +107,12 @@ object RepositoryModule {
         }
     }
 
+    @Provides
+    @Singleton
+    fun provideCheckVersionRepository(
+        apiServices: ApiServices,
+        @ApplicationContext context: Context
+    ): CheckVersionRepository {
+        return CheckVersionRepository(apiServices, context)
+    }
 }

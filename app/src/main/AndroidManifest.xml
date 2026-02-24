@@ -30,7 +30,6 @@
 
         <activity
             android:name=".CrashActivity"
-            android:process=":crash_logger"
             android:exported="true"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar">
             <intent-filter>

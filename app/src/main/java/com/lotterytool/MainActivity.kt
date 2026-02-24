@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
@@ -34,6 +35,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.lotterytool.data.repository.UpdateResult
+import com.lotterytool.ui.CheckVersionViewModel
 import com.lotterytool.ui.article.ArticleScreen
 import com.lotterytool.ui.dynamicInfo.DynamicInfoScreen
 import com.lotterytool.ui.dynamicList.DynamicListScreen
@@ -48,6 +51,9 @@ class MainActivity : ComponentActivity() {
         private const val PREFS_NAME = "app_settings"
         private const val PREF_NOTIF_ASKED = "notification_permission_asked"
     }
+
+    // 抽取为属性，避免重复调用 getSharedPreferences
+    private val prefs by lazy { getSharedPreferences(PREFS_NAME, MODE_PRIVATE) }
 
     // ── 通知权限申请回调（Android 13+）────────────────────────────────────────
     private val requestNotificationPermissionLauncher = registerForActivityResult(
@@ -65,13 +71,29 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             LotteryToolTheme(dynamicColor = false) {
-                // 1. 定义控制弹窗显示的状态
+                val versionViewModel: CheckVersionViewModel = hiltViewModel()
+                val uriHandler = LocalUriHandler.current
                 var showNotifDialog by remember { mutableStateOf(false) }
 
-                // 2. 进入页面时触发权限检查逻辑
                 LaunchedEffect(Unit) {
+                    versionViewModel.checkForUpdates()
                     checkAndRequestNotificationPermission(
                         onShowGuide = { showNotifDialog = true }
+                    )
+                }
+
+                val updateResult = versionViewModel.updateState
+                if (updateResult is UpdateResult.HasUpdate) {
+                    AppAlertDialog(
+                        title = "发现新版本: ${updateResult.latestVersion}",
+                        text = updateResult.releaseNotes.ifBlank { "修复了一些已知问题" },
+                        confirmText = "下载",
+                        dismissText = "忽略",
+                        onDismiss = { versionViewModel.dismissDialog() },
+                        onConfirm = {
+                            updateResult.downloadUrl?.let { uriHandler.openUri(it) }
+                            versionViewModel.dismissDialog()
+                        }
                     )
                 }
 
@@ -80,9 +102,13 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
-                    // 3. 渲染权限引导弹窗
+
                     if (showNotifDialog) {
-                        NotificationGuideDialog(
+                        AppAlertDialog(
+                            title = "开启通知权限",
+                            text = "为了确保你能收到抽奖进度提醒，请开启应用通知权限。",
+                            confirmText = "去设置",
+                            dismissText = "取消",
                             onDismiss = {
                                 markNotifAsked()
                                 showNotifDialog = false
@@ -142,10 +168,6 @@ class MainActivity : ComponentActivity() {
     // 通知权限逻辑层
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /**
-     * 通知权限处理逻辑：
-     * @param onShowGuide 当检测到需要显示自定义弹窗引导时执行的回调
-     */
     private fun checkAndRequestNotificationPermission(onShowGuide: () -> Unit) {
         val notifEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
 
@@ -161,12 +183,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // 对于 API 33 以下且权限关闭的情况，触发弹窗引导回调
             !hasNotifAsked() -> onShowGuide()
         }
     }
 
-    /** 核心逻辑：跳转到通知设置页 */
     private fun openNotificationSettings() {
         markNotifAsked()
         val intent = when {
@@ -193,11 +213,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun hasNotifAsked(): Boolean =
-        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(PREF_NOTIF_ASKED, false)
+    private fun hasNotifAsked(): Boolean = prefs.getBoolean(PREF_NOTIF_ASKED, false)
 
-    private fun markNotifAsked() =
-        getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit { putBoolean(PREF_NOTIF_ASKED, true) }
+    private fun markNotifAsked() = prefs.edit { putBoolean(PREF_NOTIF_ASKED, true) }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -205,26 +223,26 @@ class MainActivity : ComponentActivity() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * 权限引导弹窗 - Compose 风格
+ * 通用弹窗组件，替代原来重复的 NotificationGuideDialog 和 UpdateDialog
  */
 @Composable
-fun NotificationGuideDialog(
+fun AppAlertDialog(
+    title: String,
+    text: String,
+    confirmText: String,
+    dismissText: String,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = "开启通知权限") },
-        text = { Text(text = "为了确保你能收到抽奖进度提醒，请开启应用通知权限。") },
+        title = { Text(text = title) },
+        text = { Text(text = text) },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text("去设置")
-            }
+            TextButton(onClick = onConfirm) { Text(confirmText) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
+            TextButton(onClick = onDismiss) { Text(dismissText) }
         }
     )
 }

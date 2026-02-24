@@ -127,7 +127,7 @@ class DynamicInfoRepository @Inject constructor(
                 try {
                     val extendData = gson.fromJson(data.extendJson, ExtendData::class.java)
                     extendData?.lott?.lotteryId != null
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     false
                 }
             } else false
@@ -143,7 +143,7 @@ class DynamicInfoRepository @Inject constructor(
             if (finalType == 0) {
                 try {
                     officialRepository.fetchOfficial(cookie, dynamicId)
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     // 记录日志但不中止，因为基础动态信息仍可保存
                 }
             }
@@ -152,7 +152,7 @@ class DynamicInfoRepository @Inject constructor(
             val item = if (!data.secondCard.isNullOrBlank()) {
                 try {
                     gson.fromJson(data.secondCard, Item::class.java)
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     null // 解析失败返回 null，后续使用默认值
                 }
             } else null

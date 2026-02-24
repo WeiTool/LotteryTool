@@ -111,7 +111,7 @@ fun DynamicListScreen(
         )
 
         SummaryCard(
-            label = "特殊动态",
+            label = "加码动态",
             count = counts.special,
             color = Color(0xFFFF9800),
             onClick = { onNavigateToDetail(viewModel.articleId, 2) },
@@ -163,7 +163,7 @@ fun StatusCard(
                     text = when {
                         errorMessage != null -> "处理失败"
                         taskState == TaskState.RUNNING -> "正在解析详情..."
-                        taskState == TaskState.ACTION_PHASE -> "正在自动操作..."
+                        taskState == TaskState.ACTION_PHASE -> "正在抽奖操作..."
                         taskState == TaskState.SUCCESS -> "任务已完成"
                         !isProcessing -> "系统空闲"
                         else -> "准备中..."
