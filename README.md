@@ -4,6 +4,10 @@
 [![Android](https://img.shields.io/badge/Android-24%2B-green.svg)](https://developer.android.com)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-2026.02.00-orange.svg)](https://developer.android.com/jetpack/compose)
 
+## 如果造成侵权，请给zhou_bw@qq.com这个邮箱发送联系删除
+⭐ 如果这个项目对您有帮助，请给个Star支持一下！
+
+
 ## 🎯 项目简介
 
 LotteryTool现在主要的功能还是提取专栏所有的动态链接，功能比较单一。
@@ -126,6 +130,3 @@ app/src/main/java/com/lotterytool/
 ## 📄 许可证
 
 本项目采用 [MIT License](LICENSE) 开源协议。
-
-
-⭐ 如果这个项目对您有帮助，请给个Star支持一下！
