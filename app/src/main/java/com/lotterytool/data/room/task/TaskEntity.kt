@@ -14,8 +14,6 @@ data class TaskEntity(
     val currentProgress: Int = 0,
     val totalProgress: Int = 0,
     val errorMessage: String? = null,
-    val detailErrorCount: Int = 0,
-    val actionErrorCount: Int = 0,
     val lastUpdateTime: Long = System.currentTimeMillis()
 )
 

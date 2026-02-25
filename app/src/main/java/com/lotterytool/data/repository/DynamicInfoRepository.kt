@@ -28,9 +28,8 @@ class DynamicInfoRepository @Inject constructor(
     suspend fun processAndStoreAllDynamics(
         cookie: String,
         articleId: Long,
-        onProgress: suspend (current: Int, total: Int, error: String?) -> Unit
+        onProgress: suspend (current: Int, total: Int) -> Unit // 删除了 error: String?
     ) {
-        // 1. 获取实体后立即提取数据，避免持有整个实体
         val dynamicIdsEntity = dynamicIdsDao.getDynamicByArticleId(articleId) ?: return
         val normals = dynamicIdsEntity.normalDynamicIds
         val specials = dynamicIdsEntity.specialDynamicIds
@@ -38,8 +37,6 @@ class DynamicInfoRepository @Inject constructor(
 
         if (total == 0) return
 
-        // 2. 使用 Sequence 避免创建多个中间 List 和 Pair 对象
-        // 使用 iterator 模式处理，节省内存
         val taskSequence = sequence {
             normals.forEach { yield(it to false) }
             specials.forEach { yield(it to true) }
@@ -47,39 +44,33 @@ class DynamicInfoRepository @Inject constructor(
 
         var currentIndex = 0
 
-        // 3. 迭代处理
         for ((id, isSpecial) in taskSequence) {
             if (!currentCoroutineContext().isActive) break
 
             currentIndex++
 
-            // 检查本地数据库
             val existingInfo = dynamicInfoDao.getInfoById(id)
             if (existingInfo != null) {
-                onProgress(currentIndex, total, null)
+                onProgress(currentIndex, total)
                 continue
             }
 
             try {
-                onProgress(currentIndex, total, null)
-                val result = fetchAndProcessDynamic(cookie, id, articleId, isSpecial)
-
-                if (result is FetchResult.Error) {
-                    onProgress(currentIndex, total, "ID $id: ${result.message}")
-                }
+                onProgress(currentIndex, total)
+                // 内部 fetchAndProcessDynamic 依然会处理 FetchResult.Error 并存入本地 DB
+                fetchAndProcessDynamic(cookie, id, articleId, isSpecial)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                onProgress(currentIndex, total, "系统错误: ${e.message}")
+                // 不再通过回调传递错误字符串
             }
 
-            // 4. 这里的 delay 能有效缓解 GC 压力
             if (currentIndex < total) {
                 delay(3000)
             }
         }
 
         withContext(NonCancellable) {
-            onProgress(total, total, null)
+            onProgress(total, total)
         }
     }
 

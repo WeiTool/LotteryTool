@@ -42,7 +42,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.lotterytool.data.room.task.TaskState
@@ -207,41 +206,18 @@ fun StatusCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // 只保留进度数值显示
                         Text(
                             text = "进度: $animatedCurrent / ${progress.total}",
                             style = MaterialTheme.typography.labelSmall
                         )
 
-                        // 右侧异常信息容器
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // 1. 解析异常 (Detail Errors)
-                            if (progress.detailErrors > 0) {
-                                Text(
-                                    text = "解析错误: ${progress.detailErrors}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-
-                            // 2. 如果两者都有，加个分隔符
-                            if (progress.detailErrors > 0 && progress.actionErrors > 0) {
-                                Text(
-                                    text = " | ",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                                    modifier = Modifier.padding(horizontal = 4.dp)
-                                )
-                            }
-
-                            // 3. 操作异常 (Action Errors)
-                            if (progress.actionErrors > 0) {
-                                Text(
-                                    text = "抽奖错误: ${progress.actionErrors}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.tertiary // 建议换个颜色以示区分
-                                )
-                            }
-                        }
+                        // 移除错误计数统计，改为显示百分比
+                        Text(
+                            text = "${(progress.current * 100 / progress.total)}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             } else if (isProcessing) {
@@ -361,78 +337,6 @@ fun SummaryCard(
             } else {
                 Text("${animatedCount}个", style = MaterialTheme.typography.titleLarge, color = color)
             }
-        }
-    }
-}
-
-@Preview(showBackground = true, name = "状态卡片 - 系统空闲")
-@Composable
-private fun StatusCardIdlePreview() {
-    MaterialTheme {
-        Box(modifier = Modifier.padding(16.dp)) {
-            StatusCard(
-                isProcessing = false,
-                articleId = 123456789L,
-                taskState = null,
-                errorMessage = null,
-                progress = DynamicListViewModel.ProcessProgress(0, 0)
-            )
-        }
-    }
-}
-
-@Preview(showBackground = true, name = "状态卡片 - 正在解析")
-@Composable
-private fun StatusCardProcessingPreview() {
-    MaterialTheme {
-        Box(modifier = Modifier.padding(16.dp)) {
-            StatusCard(
-                isProcessing = true,
-                articleId = 123456789L,
-                taskState = TaskState.RUNNING,
-                errorMessage = null,
-                progress = DynamicListViewModel.ProcessProgress(
-                    current = 45,
-                    total = 100,
-                    detailErrors = 2
-                )
-            )
-        }
-    }
-}
-
-@Preview(showBackground = true, name = "状态卡片 - 正在自动操作")
-@Composable
-private fun StatusCardActionPhasePreview() {
-    MaterialTheme {
-        Box(modifier = Modifier.padding(16.dp)) {
-            StatusCard(
-                isProcessing = true,
-                articleId = 123456789L,
-                taskState = TaskState.ACTION_PHASE,
-                errorMessage = null,
-                progress = DynamicListViewModel.ProcessProgress(
-                    current = 80,
-                    total = 100,
-                    actionErrors = 5
-                )
-            )
-        }
-    }
-}
-
-@Preview(showBackground = true, name = "状态卡片 - 处理失败")
-@Composable
-private fun StatusCardErrorPreview() {
-    MaterialTheme {
-        Box(modifier = Modifier.padding(16.dp)) {
-            StatusCard(
-                isProcessing = false,
-                articleId = 123456789L,
-                taskState = null,
-                errorMessage = "网络连接超时，请检查代理设置",
-                progress = DynamicListViewModel.ProcessProgress(10, 100)
-            )
         }
     }
 }

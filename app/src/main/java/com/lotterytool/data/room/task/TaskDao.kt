@@ -28,14 +28,6 @@ interface TaskDao {
     @Query("UPDATE tasks SET currentProgress = :current, totalProgress = :total WHERE articleId = :articleId")
     suspend fun updateProgress(articleId: Long, current: Int, total: Int)
 
-    // 更新解析错误个数
-    @Query("UPDATE tasks SET detailErrorCount = :count WHERE articleId = :articleId")
-    suspend fun updateDetailErrorCount(articleId: Long, count: Int)
-
-    // 更新执行错误个数
-    @Query("UPDATE tasks SET actionErrorCount = :count WHERE articleId = :articleId")
-    suspend fun updateActionErrorCount(articleId: Long, count: Int)
-
     // 删除
     @Query("DELETE FROM tasks WHERE articleId = :articleId")
     suspend fun deleteByArticleId(articleId: Long)

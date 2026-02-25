@@ -70,15 +70,10 @@ class ExtractDynamicWorker @AssistedInject constructor(
             when (extractResult) {
                 is FetchResult.Success -> {
                     // 5. 阶段二：详情解析
-                    var detailErrorCount = 0
                     infoRepository.processAndStoreAllDynamics(
                         cookie = cookie,
                         articleId = articleId,
-                        onProgress = { current, total, error ->
-                            if (error != null) {
-                                detailErrorCount++
-                                taskDao.updateDetailErrorCount(articleId, detailErrorCount)
-                            }
+                        onProgress = { current, total ->
                             taskDao.updateProgress(articleId, current, total)
                             notificationManager.updateProgress(articleId, current, total)
                         }
@@ -88,16 +83,11 @@ class ExtractDynamicWorker @AssistedInject constructor(
                     taskDao.updateProgress(articleId, 0, 0)
                     taskDao.updateState(articleId, TaskState.ACTION_PHASE)
 
-                    var actionErrorCount = 0
                     dynamicAction.allAction(
                         articleId = articleId,
                         cookie = cookie,
                         csrf = csrf,
-                        onProgress = { current, total, error ->
-                            if (error != null) {
-                                actionErrorCount++
-                                taskDao.updateActionErrorCount(articleId, actionErrorCount)
-                            }
+                        onProgress = { current, total ->
                             taskDao.updateProgress(articleId, current, total)
                             notificationManager.updateProgress(articleId, current, total)
                         }

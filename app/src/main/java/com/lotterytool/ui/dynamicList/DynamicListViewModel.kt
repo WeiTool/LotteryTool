@@ -34,8 +34,6 @@ class DynamicListViewModel @Inject constructor(
     data class ProcessProgress(
         val current: Int = 0,
         val total: Int = 0,
-        val detailErrors: Int = 0,
-        val actionErrors: Int = 0
     )
 
     data class DynamicCount(
@@ -94,8 +92,6 @@ class DynamicListViewModel @Inject constructor(
             ProcessProgress(
                 current = entity.currentProgress,
                 total = entity.totalProgress,
-                detailErrors = entity.detailErrorCount,
-                actionErrors = entity.actionErrorCount
             )
         } else {
             ProcessProgress()

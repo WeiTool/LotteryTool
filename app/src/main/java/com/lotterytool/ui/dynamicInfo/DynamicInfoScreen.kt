@@ -113,7 +113,7 @@ fun DynamicInfoScreen(
                         onRetryOfficial = { viewModel.showOfficialDetail(it.dynamicId) },
                         // 改为弹出确认 Dialog，而非直接执行
                         onRetryAction = { viewModel.showRetryDialog(it) },
-                        onDelete = { viewModel.deleteDynamic(it) }
+                        onDelete = { viewModel.showDeleteDialog(it) }
                     )
                 }
             }
@@ -124,7 +124,7 @@ fun DynamicInfoScreen(
                     info = info,
                     onRetry = { viewModel.retryExtraction(info) },
                     onShowOfficial = { viewModel.showOfficialDetail(info.dynamicId) },
-                    onDeleteDynamic = { viewModel.deleteDynamic(info) },
+                    onDeleteDynamic = { viewModel.showDeleteDialog(info) },
                     // 改为弹出确认 Dialog
                     onRetryAction = { viewModel.showRetryDialog(info) }
                 )
@@ -143,6 +143,11 @@ fun DynamicInfoScreen(
         // 重试任务确认/执行对话框（pendingRetryInfo 非 null 时显示）
         if (viewModel.pendingRetryInfo != null) {
             RetryActionDialog(viewModel = viewModel)
+        }
+
+        // 删除确认/执行对话框（pendingDeleteInfo 非 null 时显示）
+        if (viewModel.pendingDeleteInfo != null) {
+            DeleteDynamicDialog(viewModel = viewModel)
         }
     }
 }
@@ -427,11 +432,6 @@ private fun ProblemBadgeWrapper(
 // DynamicInfoItem — 逻辑分发组件
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * 主列表中的动态条目。
- * 因主列表已通过 [problemDynamicIds] 过滤掉所有问题动态，
- * 正常情况下 [info.errorMessage] 为 null，[ErrorDynamicCard] 分支作为安全兜底保留。
- */
 @Composable
 fun DynamicInfoItem(
     info: DynamicInfoDetail,
@@ -972,6 +972,152 @@ fun RetryActionDialog(viewModel: DynamicInfoViewModel) {
         dismissButton = {
             if (!isRetrying) {
                 TextButton(onClick = { viewModel.dismissRetryDialog() }) {
+                    Text("取消")
+                }
+            }
+        }
+    )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DeleteDynamicDialog — 删除确认 + 执行中转圈 + 远端失败提示
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 删除动态的确认 Dialog，包含三个阶段：
+ *
+ * - **确认阶段**（[DynamicInfoViewModel.isDeleting] == false，[DynamicInfoViewModel.deleteRemoteError] == null）：
+ *   显示待删除动态 ID，提供"取消"/"确认删除"按钮。
+ * - **执行阶段**（[DynamicInfoViewModel.isDeleting] == true）：
+ *   隐藏按钮，显示 [CircularProgressIndicator]，Dialog 不可关闭。
+ * - **远端失败阶段**（[DynamicInfoViewModel.deleteRemoteError] != null）：
+ *   展示服务器返回的错误信息，提供"取消"/"重试"按钮。
+ *   点击取消直接关闭 Dialog，**不**继续执行本地删除；
+ *   点击重试重新调用远端删除接口。
+ *
+ * Dialog 无法通过点击背景或系统返回键关闭，只能通过按钮操作。
+ */
+@Composable
+fun DeleteDynamicDialog(viewModel: DynamicInfoViewModel) {
+    val info = viewModel.pendingDeleteInfo ?: return
+    val isDeleting = viewModel.isDeleting
+    val remoteError = viewModel.deleteRemoteError
+
+    AlertDialog(
+        // 禁止点击外部 / 返回键关闭
+        onDismissRequest = {},
+        title = {
+            Text(
+                text = when {
+                    isDeleting -> "正在删除…"
+                    remoteError != null -> "删除失败"
+                    else -> "确认删除"
+                }
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                when {
+                    // ── 执行阶段：转圈 + 提示 ─────────────────────────────────
+                    isDeleting -> {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(48.dp),
+                            strokeWidth = 4.dp
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "正在从远端删除，请稍候…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    // ── 远端失败阶段：展示错误信息 ────────────────────────────
+                    remoteError != null -> {
+                        Icon(
+                            imageVector = Icons.Default.Error,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "远端删除失败，本地数据未改动。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        Text(
+                            text = remoteError,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    // ── 确认阶段：提示用户即将删除的条目 ─────────────────────
+                    else -> {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "确定要删除此动态吗？",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "ID: ${info.dynamicId}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "将先从远端删除，成功后再移除本地记录。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            // 执行阶段隐藏所有按钮
+            if (!isDeleting) {
+                TextButton(
+                    onClick = { viewModel.confirmDelete(info) }
+                ) {
+                    Text(
+                        text = if (remoteError != null) "重试" else "确认删除",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            // 执行阶段隐藏所有按钮；其他阶段均允许取消
+            if (!isDeleting) {
+                TextButton(onClick = { viewModel.dismissDeleteDialog() }) {
                     Text("取消")
                 }
             }
