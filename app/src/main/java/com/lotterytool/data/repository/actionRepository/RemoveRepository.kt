@@ -8,12 +8,10 @@ import javax.inject.Inject
 class RemoveRepository @Inject constructor(
     private val apiServices: ApiServices
 ) {
-    suspend fun executeRemove(cookie: String, csrf: String, dynamicId: Long , dynType: Int): FetchResult<Unit> {
+    suspend fun executeRemove(cookie: String, csrf: String, dynamicId: Long): FetchResult<Unit> {
         return try {
             val requestBody = RemoveRequest(
                 dyn_id_str = dynamicId.toString(),
-                dyn_type = dynType,
-                rid_type = dynamicId.toString()
             )
             val response = apiServices.remove(
                 cookie = cookie,

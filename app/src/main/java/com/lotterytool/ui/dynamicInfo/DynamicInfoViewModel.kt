@@ -9,13 +9,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lotterytool.data.repository.DynamicInfoRepository
 import com.lotterytool.data.repository.OfficialRepository
-import com.lotterytool.data.repository.actionRepository.RemoveRepository
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDetail
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoEntity
 import com.lotterytool.data.room.user.UserDao
-import com.lotterytool.data.room.user.UserEntity
 import com.lotterytool.data.workers.DynamicAction
 import com.lotterytool.utils.FetchResult
 import com.lotterytool.utils.ReplyMessage
@@ -51,19 +49,6 @@ class DynamicInfoViewModel @Inject constructor(
 
     private val _errorMessage = mutableStateOf<String?>(null)
     val errorMessage: String? get() = _errorMessage.value
-
-    // ── 当前用户 ──────────────────────────────────────────────────────────────
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val user: StateFlow<UserEntity?> = flowOf(userMid)
-        .flatMapLatest { mid ->
-            if (mid == -1L) flowOf(null)
-            else userDao.getUserFlowById(mid)
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = null
-        )
 
     // ── 动态列表（按 articleId + type 过滤）──────────────────────────────────
     /**
@@ -104,7 +89,8 @@ class DynamicInfoViewModel @Inject constructor(
     // ── 重试：解析错误 ────────────────────────────────────────────────────────
     fun retryExtraction(info: DynamicInfoDetail) {
         viewModelScope.launch {
-            val cookie = user.value?.SESSDATA
+            val currentUser = if (userMid != -1L) userDao.getUserById(userMid) else null
+            val cookie = currentUser?.SESSDATA
             if (cookie.isNullOrBlank()) {
                 _errorMessage.value = "未找到有效的登录状态，请先登录"
                 return@launch
@@ -124,7 +110,8 @@ class DynamicInfoViewModel @Inject constructor(
     // ── 重试：官方抽奖信息 ────────────────────────────────────────────────────
     fun retryOfficial(id: Long) {
         viewModelScope.launch {
-            val cookie = user.value?.SESSDATA
+            val currentUser = if (userMid != -1L) userDao.getUserById(userMid) else null
+            val cookie = currentUser?.SESSDATA
             if (cookie.isNullOrBlank()) return@launch
             val result = officialRepository.fetchOfficial(
                 cookie = cookie,
@@ -173,7 +160,7 @@ class DynamicInfoViewModel @Inject constructor(
      */
     fun retryAction(info: DynamicInfoDetail) {
         viewModelScope.launch {
-            val currentUser = user.value
+            val currentUser = if (userMid != -1L) userDao.getUserById(userMid) else null
             val cookie = currentUser?.SESSDATA
             val csrf = currentUser?.CSRF
 

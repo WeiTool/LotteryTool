@@ -14,6 +14,4 @@ data class LikeRequest(
 
 data class RemoveRequest(
     val dyn_id_str: String,
-    val dyn_type: Int,
-    val rid_type: String
 )
