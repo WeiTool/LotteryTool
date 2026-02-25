@@ -128,6 +128,7 @@ interface ApiServices {
     @POST("https://api.bilibili.com/x/dynamic/feed/operate/remove")
     suspend fun remove(
         @Header("Cookie") cookie: String,
+        @Query("platform") platform : String = "web",
         @Query("csrf") csrf: String,
         @Body body: RemoveRequest
     ): ActionResponse

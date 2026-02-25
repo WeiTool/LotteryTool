@@ -21,18 +21,25 @@ class CheckVersionRepository @Inject constructor(
                 if (!releases.isNullOrEmpty()) {
                     // 1. 获取服务器上最新的版本 (列表第一个)
                     val latestRelease = releases[0]
+                    val apkAsset =
+                        latestRelease.assets.firstOrNull { it.name.endsWith(".apk", true) }
+
+                    if (apkAsset == null) {
+                        return UpdateResult.Error("未发现发布版本")
+                    }
+
                     val latestVersion = latestRelease.name.replace(Regex("[Vv]"), "") // 去掉 V
 
                     // 2. 获取本地当前版本
                     val currentVersion = getCurrentVersionName().replace(Regex("[Vv]"), "")
 
                     // 3. 比较版本 (这里简单判断字符串不一致则更新，也可做更复杂的版本号解析)
-                    if (latestVersion != currentVersion && latestVersion.isNotEmpty()) {
+                    if (isVersionNewer(latestVersion, currentVersion)) {
                         UpdateResult.HasUpdate(
                             latestVersion = latestVersion,
                             currentVersion = currentVersion,
                             releaseNotes = latestRelease.body,
-                            downloadUrl = latestRelease.assets.firstOrNull { it.name.endsWith(".apk") }?.browserDownloadUrl
+                            downloadUrl = apkAsset.browserDownloadUrl
                         )
                     } else {
                         UpdateResult.NoUpdate
@@ -52,7 +59,10 @@ class CheckVersionRepository @Inject constructor(
     private fun getCurrentVersionName(): String {
         return try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+                context.packageManager.getPackageInfo(
+                    context.packageName,
+                    PackageManager.PackageInfoFlags.of(0)
+                )
             } else {
                 context.packageManager.getPackageInfo(context.packageName, 0)
             }
@@ -60,6 +70,25 @@ class CheckVersionRepository @Inject constructor(
         } catch (_: Exception) {
             ""
         }
+    }
+
+
+    //比较逻辑：支持 10.10.10 与 9.9.9 的正确比较
+    private fun isVersionNewer(v1: String, v2: String): Boolean {
+        // 过滤掉非数字部分，确保 toInt 不崩溃
+        val levels1 = v1.split(".").mapNotNull { it.trim().toIntOrNull() }
+        val levels2 = v2.split(".").mapNotNull { it.trim().toIntOrNull() }
+
+        val maxLength = maxOf(levels1.size, levels2.size)
+        for (i in 0 until maxLength) {
+            // 如果某一方位数较短，缺少的位补 0
+            val v1Part = levels1.getOrElse(i) { 0 }
+            val v2Part = levels2.getOrElse(i) { 0 }
+
+            if (v1Part > v2Part) return true
+            if (v1Part < v2Part) return false
+        }
+        return false
     }
 }
 

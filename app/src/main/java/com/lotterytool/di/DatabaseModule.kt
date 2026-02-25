@@ -31,7 +31,9 @@ object DatabaseModule {
             context,
             AppDatabase::class.java,
             "lottery_database"
-        ).build()
+        )
+            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .build()
     }
 
     @Provides
@@ -73,7 +75,6 @@ object DatabaseModule {
     fun provideCrashLogDao(database: AppDatabase): CrashLogDao {
         return database.crashLogDao()
     }
-
 
 
 }

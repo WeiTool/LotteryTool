@@ -20,6 +20,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug" // 这会让包名变成 com.lotterytool.debug
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

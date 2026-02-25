@@ -163,23 +163,6 @@ class ArticleViewModel @Inject constructor(
             try {
                 _isDeleting.value = true
                 val dynamicIds = dynamicInfoDao.getDynamicIdsByArticleId(articleId)
-                val user = userDao.getUserById(userMid)
-                if (user != null && dynamicIds.isNotEmpty()) {
-                    val cookie = user.SESSDATA
-                    val csrf = user.CSRF
-
-                    // 循环删除服务器上的内容
-                    dynamicIds.forEachIndexed { index, id ->
-                        removeRepository.executeRemove(cookie, csrf, id)
-
-                        // 如果不是最后一个元素，则增加延迟
-                        if (index < dynamicIds.size - 1) {
-                            // 随机延迟 1000ms - 2000ms
-                            val shadowDelay = Random.nextLong(1000, 2000)
-                            delay(shadowDelay)
-                        }
-                    }
-                }
                 actionDao.deleteByArticleId(articleId)
                 if (dynamicIds.isNotEmpty()) {
                     officialInfoDao.deleteByDynamicIds(dynamicIds)

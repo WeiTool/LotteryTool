@@ -34,7 +34,6 @@ import javax.inject.Inject
 class DynamicInfoViewModel @Inject constructor(
     private val repository: DynamicInfoRepository,
     private val officialRepository: OfficialRepository,
-    private val removeRepository: RemoveRepository,
     private val dynamicAction: DynamicAction,
     private val userDao: UserDao,
     private val officialInfoDao: OfficialInfoDao,
@@ -207,85 +206,22 @@ class DynamicInfoViewModel @Inject constructor(
 
     // ── 删除单条动态（带确认 Dialog）────────────────────────────────────────
 
-    /**
-     * 当前待删除的动态（非 null 时 DeleteDynamicDialog 显示）。
-     */
     var pendingDeleteInfo by mutableStateOf<DynamicInfoDetail?>(null)
         private set
 
-    /**
-     * Dialog 内部是否正在执行远端删除请求。
-     */
-    var isDeleting by mutableStateOf(false)
-        private set
-
-    /**
-     * 远端删除失败时的错误信息。
-     * 非 null 时 Dialog 显示错误提示及"重试"按钮，等待用户决策。
-     */
-    var deleteRemoteError by mutableStateOf<String?>(null)
-        private set
-
-    /** 点击删除按钮 → 弹出确认 Dialog */
     fun showDeleteDialog(info: DynamicInfoDetail) {
         pendingDeleteInfo = info
-        deleteRemoteError = null
     }
 
-    /**
-     * 点击取消 → 关闭 Dialog（仅在未执行删除时有效）。
-     * 远端失败时同样允许取消，不会继续执行本地删除。
-     */
     fun dismissDeleteDialog() {
-        if (!isDeleting) {
-            pendingDeleteInfo = null
-            deleteRemoteError = null
-        }
+        pendingDeleteInfo = null
     }
 
-    /**
-     * 执行删除流程：
-     * 1. 切换到 loading 状态。
-     * 2. 先执行远端删除（[RemoveRepository.executeRemove]）。
-     *    - 失败：在 Dialog 中显示错误信息，停留等待用户选择"重试"或"取消"。
-     *    - 成功：继续执行本地数据库删除，然后关闭 Dialog。
-     */
     fun confirmDelete(info: DynamicInfoDetail) {
         viewModelScope.launch {
-            val currentUser = user.value
-            val cookie = currentUser?.SESSDATA
-            val csrf = currentUser?.CSRF
-
-            if (cookie.isNullOrBlank() || csrf.isNullOrBlank()) {
-                deleteRemoteError = "登录状态失效，请重新登录"
-                return@launch
-            }
-
-            isDeleting = true
-            deleteRemoteError = null
-
-            val removeResult = removeRepository.executeRemove(
-                cookie = cookie,
-                csrf = csrf,
-                dynamicId = info.dynamicId
-            )
-
-            if (removeResult is FetchResult.Error) {
-                // 远端失败：展示错误，停留在 Dialog 等待用户决策
-                deleteRemoteError = removeResult.message
-                isDeleting = false
-                return@launch
-            }
-
-            // 远端成功：继续删除本地数据
-            repository.deleteDynamicLocally(
-                dynamicId = info.dynamicId,
-                isOfficial = info.type == 0
-            )
-
-            isDeleting = false
-            pendingDeleteInfo = null
-            deleteRemoteError = null
+            // 只保留本地删除
+            repository.deleteDynamicLocally(info.dynamicId, info.type == 0)
+            dismissDeleteDialog()
         }
     }
 }

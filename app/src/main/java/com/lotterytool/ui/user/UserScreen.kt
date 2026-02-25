@@ -251,7 +251,7 @@ fun AddUserCard(onClick: () -> Unit, modifier: Modifier = Modifier) {
                 tint = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text("添加账号", color = MaterialTheme.colorScheme.primary)
+            Text("添加账号或重新登陆", color = MaterialTheme.colorScheme.primary)
         }
     }
 }
