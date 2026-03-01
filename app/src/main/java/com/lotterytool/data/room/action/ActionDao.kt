@@ -16,7 +16,11 @@ interface ActionDao {
     @Query("SELECT * FROM action_info WHERE dynamicId = :dynamicId")
     suspend fun getActionById(dynamicId: Long): ActionEntity?
 
-    // 删除专栏任务
+    // 删除单条动态的操作记录（用于精细化删除：仅删除成功远端删除的动态）
+    @Query("DELETE FROM action_info WHERE dynamicId = :dynamicId")
+    suspend fun deleteByDynamicId(dynamicId: Long)
+
+    // 删除专栏任务（全量删除，仅在整个专栏可完整删除时调用）
     @Query("DELETE FROM action_info WHERE dynamicId IN (SELECT dynamicId FROM dynamic_info WHERE articleId = :articleId)")
     suspend fun deleteByArticleId(articleId: Long)
 

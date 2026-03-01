@@ -16,6 +16,10 @@ interface TaskDao {
     @Query("SELECT articleId FROM tasks WHERE state = 'ACTION_PHASE'")
     fun getTasksInActionPhaseIds(): Flow<List<Long>>
 
+    // 获取所有状态为 state 的 articleId
+    @Query("SELECT articleId FROM tasks WHERE state = :state")
+    fun getTasksByState(state: TaskState): Flow<List<Long>>
+
     // 更新Task
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertTask(task: TaskEntity)

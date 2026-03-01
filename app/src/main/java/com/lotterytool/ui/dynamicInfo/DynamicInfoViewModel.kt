@@ -9,11 +9,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lotterytool.data.repository.DynamicInfoRepository
 import com.lotterytool.data.repository.OfficialRepository
+import com.lotterytool.data.repository.actionRepository.RemoveRepository
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDetail
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoEntity
 import com.lotterytool.data.room.user.UserDao
+import com.lotterytool.data.room.userDynamic.UserDynamicDao
 import com.lotterytool.data.workers.DynamicAction
 import com.lotterytool.utils.FetchResult
 import com.lotterytool.utils.ReplyMessage
@@ -35,6 +37,8 @@ class DynamicInfoViewModel @Inject constructor(
     private val dynamicAction: DynamicAction,
     private val userDao: UserDao,
     private val officialInfoDao: OfficialInfoDao,
+    private val userDynamicDao: UserDynamicDao,
+    private val removeRepository: RemoveRepository,
     dynamicInfoDao: DynamicInfoDao,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -46,9 +50,6 @@ class DynamicInfoViewModel @Inject constructor(
     // ── 选中的官方动态 ID（驱动 officialDetail Flow）──────────────────────────
     var selectedOfficialId by mutableStateOf<Long?>(null)
         private set
-
-    private val _errorMessage = mutableStateOf<String?>(null)
-    val errorMessage: String? get() = _errorMessage.value
 
     // ── 动态列表（按 articleId + type 过滤）──────────────────────────────────
     /**
@@ -82,32 +83,11 @@ class DynamicInfoViewModel @Inject constructor(
                 initialValue = null
             )
 
-    // ── 对话框控制 ────────────────────────────────────────────────────────────
+    // ── 官方详情对话框控制 ────────────────────────────────────────────────────
     fun showOfficialDetail(id: Long) { selectedOfficialId = id }
-    fun dismissDialog() { selectedOfficialId = null }
+    fun dismissOfficialDialog() { selectedOfficialId = null }
 
-    // ── 重试：解析错误 ────────────────────────────────────────────────────────
-    fun retryExtraction(info: DynamicInfoDetail) {
-        viewModelScope.launch {
-            val currentUser = if (userMid != -1L) userDao.getUserById(userMid) else null
-            val cookie = currentUser?.SESSDATA
-            if (cookie.isNullOrBlank()) {
-                _errorMessage.value = "未找到有效的登录状态，请先登录"
-                return@launch
-            }
-            val result = repository.retrySingleDynamic(
-                cookie = cookie,
-                dynamicId = info.dynamicId,
-                articleId = articleId,
-                isSpecial = info.type == 2
-            )
-            if (result is FetchResult.Error) {
-                _errorMessage.value = "重试失败: ${result.message}"
-            }
-        }
-    }
-
-    // ── 重试：官方抽奖信息 ────────────────────────────────────────────────────
+    /** 官方详情对话框内：重试加载官方抽奖信息 */
     fun retryOfficial(id: Long) {
         viewModelScope.launch {
             val currentUser = if (userMid != -1L) userDao.getUserById(userMid) else null
@@ -118,97 +98,175 @@ class DynamicInfoViewModel @Inject constructor(
                 dynamicId = id
             )
             if (result is FetchResult.Error) {
-                _errorMessage.value = "重试官方详情失败: ${result.message}"
+                dialogError = "失败：${result.message}"
             }
         }
     }
 
-    // ── 重试：任务执行（转发 / 点赞 / 评论 / 关注）───────────────────────────
+    // ════════════════════════════════════════════════════════════════════════════
+    // 统一操作对话框（重试解析 / 重试任务 / 删除）
+    // ════════════════════════════════════════════════════════════════════════════
 
     /**
-     * 当前待处理的动态信息（用于显示确认 Dialog）。
-     * 非 null 时表示 Dialog 应当呈现。
+     * 当前待处理的操作状态。
+     * 非 null 时统一操作对话框应当显示。
      */
-    var pendingRetryInfo by mutableStateOf<DynamicInfoDetail?>(null)
+    var pendingAction by mutableStateOf<PendingAction?>(null)
         private set
 
     /**
-     * Dialog 内部是否正在执行重试任务。
-     * true 时显示 loading 转圈，按钮禁用；false 且 [pendingRetryInfo] 非 null 时显示确认按钮。
+     * 对话框内部是否正在执行操作。
+     * true 时显示 loading 转圈，所有按钮禁用；false 时显示确认/取消按钮。
      */
-    var isRetrying by mutableStateOf(false)
+    var isExecuting by mutableStateOf(false)
         private set
-
-    fun showRetryDialog(info: DynamicInfoDetail) {
-        pendingRetryInfo = info
-    }
-
-    fun dismissRetryDialog() {
-        // 只在未执行任务时允许手动关闭
-        if (!isRetrying) {
-            pendingRetryInfo = null
-        }
-    }
 
     /**
-     * 执行重试：
-     * 1. 保留 Dialog 并切换到 loading 状态（转圈）。
-     * 2. 执行 [DynamicAction.performAction]，内部已跳过成功的步骤。
-     * 3. 完成后关闭 Dialog，Room Flow 自动刷新卡片展示。
-     *    若该动态所有步骤均成功，[DynamicProblemsViewModel] 的 [actionErrorItems] 将
-     *    自动将其从可展开卡片中移除，无需额外处理。
+     * 对话框内显示的错误信息。
+     * 执行失败时非 null，对话框不自动关闭；执行成功或手动关闭时清空。
      */
-    fun retryAction(info: DynamicInfoDetail) {
-        viewModelScope.launch {
-            val currentUser = if (userMid != -1L) userDao.getUserById(userMid) else null
-            val cookie = currentUser?.SESSDATA
-            val csrf = currentUser?.CSRF
+    var dialogError by mutableStateOf<String?>(null)
+        private set
 
-            if (cookie.isNullOrBlank() || csrf.isNullOrBlank()) {
-                _errorMessage.value = "登录状态失效，请重新登录"
-                pendingRetryInfo = null
-                return@launch
-            }
+    // ── 显示对话框 ────────────────────────────────────────────────────────────
 
-            // 开始执行：进入 loading 状态，Dialog 保持显示
-            isRetrying = true
-
-            val result = dynamicAction.performAction(
-                dynamicId = info.dynamicId,
-                cookie = cookie,
-                csrf = csrf,
-                content = RepostContent.getRandom(),
-                message = ReplyMessage.getRandom()
-            )
-
-            if (result is FetchResult.Error) {
-                _errorMessage.value = "执行失败: ${result.message}"
-            }
-
-            // 执行完毕：关闭 Dialog
-            isRetrying = false
-            pendingRetryInfo = null
-        }
+    fun showRetryExtraction(info: DynamicInfoDetail) {
+        dialogError = null
+        pendingAction = PendingAction(info, ActionType.RETRY_EXTRACTION)
     }
 
-    // ── 删除单条动态（带确认 Dialog）────────────────────────────────────────
-
-    var pendingDeleteInfo by mutableStateOf<DynamicInfoDetail?>(null)
-        private set
+    fun showRetryAction(info: DynamicInfoDetail) {
+        dialogError = null
+        pendingAction = PendingAction(info, ActionType.RETRY_ACTION)
+    }
 
     fun showDeleteDialog(info: DynamicInfoDetail) {
-        pendingDeleteInfo = info
+        dialogError = null
+        pendingAction = PendingAction(info, ActionType.DELETE)
     }
 
-    fun dismissDeleteDialog() {
-        pendingDeleteInfo = null
-    }
-
-    fun confirmDelete(info: DynamicInfoDetail) {
-        viewModelScope.launch {
-            // 只保留本地删除
-            repository.deleteDynamicLocally(info.dynamicId, info.type == 0)
-            dismissDeleteDialog()
+    // ── 关闭对话框（仅在未执行时允许，只能由取消按钮调用）────────────────────
+    fun dismissActionDialog() {
+        if (!isExecuting) {
+            pendingAction = null
+            dialogError = null
         }
     }
+
+    // ── 执行当前对话框对应的操作 ───────────────────────────────────────────────
+    /**
+     * 根据 [pendingAction] 的类型分发执行：
+     * - 执行期间 [isExecuting] = true，对话框保持显示（不可点击空白处关闭）。
+     * - 成功后自动关闭对话框（[pendingAction] 置 null）。
+     * - 失败时将错误信息写入 [dialogError]，对话框保持显示等待用户操作。
+     */
+    fun executeCurrentAction() {
+        val current = pendingAction ?: return
+        viewModelScope.launch {
+            isExecuting = true
+            dialogError = null
+
+            when (current.type) {
+                ActionType.RETRY_EXTRACTION -> executeRetryExtraction(current.info)
+                ActionType.RETRY_ACTION    -> executeRetryAction(current.info)
+                ActionType.DELETE          -> executeDelete(current.info)
+            }
+
+            isExecuting = false
+            // 仅在没有错误时（即操作成功）自动关闭
+            if (dialogError == null) {
+                pendingAction = null
+            }
+        }
+    }
+
+    // ── 内部执行：重新解析 ─────────────────────────────────────────────────────
+    private suspend fun executeRetryExtraction(info: DynamicInfoDetail) {
+        val currentUser = if (userMid != -1L) userDao.getUserById(userMid) else null
+        val cookie = currentUser?.SESSDATA
+        if (cookie.isNullOrBlank()) {
+            dialogError = "未找到有效的登录状态，请先登录"
+            return
+        }
+        val result = repository.retrySingleDynamic(
+            cookie = cookie,
+            dynamicId = info.dynamicId,
+            articleId = articleId,
+            isSpecial = info.type == 2
+        )
+        if (result is FetchResult.Error) {
+            dialogError = "重新解析失败：${result.message}"
+        }
+    }
+
+    // ── 内部执行：重新执行任务 ─────────────────────────────────────────────────
+    private suspend fun executeRetryAction(info: DynamicInfoDetail) {
+        val currentUser = if (userMid != -1L) userDao.getUserById(userMid) else null
+        val cookie = currentUser?.SESSDATA
+        val csrf = currentUser?.CSRF
+
+        if (cookie.isNullOrBlank() || csrf.isNullOrBlank()) {
+            dialogError = "登录状态失效，请重新登录"
+            return
+        }
+
+        val result = dynamicAction.performAction(
+            dynamicId = info.dynamicId,
+            cookie = cookie,
+            csrf = csrf,
+            content = RepostContent.getRandom(),
+            message = ReplyMessage.getRandom()
+        )
+
+        if (result is FetchResult.Error) {
+            dialogError = "执行失败：${result.message}"
+        }
+    }
+
+    // ── 内部执行：删除动态 ─────────────────────────────────────────────────────
+    private suspend fun executeDelete(info: DynamicInfoDetail) {
+        val currentUser = if (userMid != -1L) userDao.getUserById(userMid) else null
+        val cookie = currentUser?.SESSDATA
+        val csrf = currentUser?.CSRF
+
+        // 1. 尝试从 user_dynamic 表获取对应的 serviceId（远端 ID）
+        val serviceId = userDynamicDao.getServiceIdByOriginalId(info.dynamicId)
+
+        // 2. 如果有登录信息且找到了 serviceId，执行远端删除
+        if (!cookie.isNullOrBlank() && !csrf.isNullOrBlank() && serviceId != null) {
+            val result = removeRepository.executeRemove(
+                cookie = cookie,
+                csrf = csrf,
+                dynamicId = serviceId
+            )
+            if (result is FetchResult.Error) {
+                // 远端删除失败：展示错误信息，并阻断本地删除
+                dialogError = "远端删除失败：${result.message}"
+                return
+            }
+        }
+
+        // 3. 远端删除成功（或无需远端删除）后，执行本地逻辑删除
+        repository.deleteDynamicLocally(info.dynamicId, info.type == 0)
+    }
 }
+
+// ── 统一操作对话框的动作类型 ─────────────────────────────────────────────────────
+
+enum class ActionType {
+    /** 重新解析（解析错误重试） */
+    RETRY_EXTRACTION,
+    /** 重新执行任务（转发/点赞/评论/关注） */
+    RETRY_ACTION,
+    /** 删除动态 */
+    DELETE
+}
+
+/**
+ * 统一对话框的待处理状态。
+ * 非 null 时表示对话框应当显示。
+ */
+data class PendingAction(
+    val info: DynamicInfoDetail,
+    val type: ActionType
+)

@@ -7,6 +7,7 @@ import com.lotterytool.data.room.action.ActionDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
 import com.lotterytool.data.room.task.TaskDao
+import com.lotterytool.data.room.task.TaskState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
@@ -120,4 +121,13 @@ class IconViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5000),
         emptyMap()
     )
+
+    // 检查是否已经处理过
+    val articleProcessedStates: StateFlow<Map<Long, Boolean>> = taskDao.getTasksByState(TaskState.SUCCESS)
+        .map { list -> list.associateWith { true } }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            emptyMap()
+        )
 }

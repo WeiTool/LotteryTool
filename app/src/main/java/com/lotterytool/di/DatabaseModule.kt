@@ -11,6 +11,7 @@ import com.lotterytool.data.room.log.CrashLogDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
 import com.lotterytool.data.room.task.TaskDao
 import com.lotterytool.data.room.user.UserDao
+import com.lotterytool.data.room.userDynamic.UserDynamicDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -33,6 +34,7 @@ object DatabaseModule {
             "lottery_database"
         )
             .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_2_3)
             .build()
     }
 
@@ -76,5 +78,9 @@ object DatabaseModule {
         return database.crashLogDao()
     }
 
+    @Provides
+    fun provideUserDynamicDao(database: AppDatabase): UserDynamicDao {
+        return database.userDynamicDao()
+    }
 
 }

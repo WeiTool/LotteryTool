@@ -77,15 +77,13 @@ fun DynamicInfoScreen(
     val items by viewModel.dynamicList.collectAsStateWithLifecycle()
     val officialDetail by viewModel.officialDetail.collectAsStateWithLifecycle()
 
-    // 由于 DynamicProblemsViewModel 已按 type 隔离，各列表仅包含当前 type 的动态。
-    // 官方信息缺失 / 已过开奖时间在 type != 0 时自然为空，不需要 Screen 层额外判断。
     val parseErrors by problemsViewModel.parseErrors.collectAsStateWithLifecycle()
     val missingOfficialItems by problemsViewModel.missingOfficialInfoItems.collectAsStateWithLifecycle()
     val actionErrorItems by problemsViewModel.actionErrorItems.collectAsStateWithLifecycle()
     val expiredItems by problemsViewModel.expiredItems.collectAsStateWithLifecycle()
     val problemDynamicIds by problemsViewModel.problemDynamicIds.collectAsStateWithLifecycle()
 
-    // 主列表仅显示不在任何问题分组中的动态（问题动态已归入对应的展开卡片）
+    // 主列表仅显示不在任何问题分组中的动态
     val filteredItems = remember(items, problemDynamicIds) {
         items.filter { it.dynamicId !in problemDynamicIds }
     }
@@ -109,45 +107,43 @@ fun DynamicInfoScreen(
                         missingOfficialItems = missingOfficialItems,
                         actionErrorItems = actionErrorItems,
                         expiredItems = expiredItems,
-                        onRetryExtraction = { viewModel.retryExtraction(it) },
+                        // 解析错误重试也走统一对话框
+                        onRetryExtraction = { viewModel.showRetryExtraction(it) },
                         onRetryOfficial = { viewModel.showOfficialDetail(it.dynamicId) },
-                        // 改为弹出确认 Dialog，而非直接执行
-                        onRetryAction = { viewModel.showRetryDialog(it) },
+                        onRetryAction = { viewModel.showRetryAction(it) },
                         onDelete = { viewModel.showDeleteDialog(it) }
                     )
                 }
             }
 
-            // ── 正常动态列表（已过滤掉所有问题动态，仅显示无任何异常的条目）────
-            items(filteredItems, key = { it.dynamicId }) { info ->
+            // ── 正常动态列表 ──────────────────────────────────────────────────
+            items(
+                items = filteredItems,
+                // 组合两个 ID 确保 Key 的绝对唯一
+                key = { info -> "${info.dynamicId}_${info.serviceId ?: 0}" }
+            ) { info ->
                 DynamicInfoItem(
                     info = info,
-                    onRetry = { viewModel.retryExtraction(info) },
+                    onRetry = { viewModel.showRetryExtraction(info) },
                     onShowOfficial = { viewModel.showOfficialDetail(info.dynamicId) },
                     onDeleteDynamic = { viewModel.showDeleteDialog(info) },
-                    // 改为弹出确认 Dialog
-                    onRetryAction = { viewModel.showRetryDialog(info) }
+                    onRetryAction = { viewModel.showRetryAction(info) }
                 )
             }
         }
 
-        // 官方抽奖详情对话框
+        // ── 官方抽奖详情对话框（独立，仅用于展示内容）────────────────────────
         if (viewModel.selectedOfficialId != null) {
             OfficialDetailDialog(
                 detail = officialDetail,
-                onDismiss = { viewModel.dismissDialog() },
+                onDismiss = { viewModel.dismissOfficialDialog() },
                 onRetry = { viewModel.retryOfficial(it) }
             )
         }
 
-        // 重试任务确认/执行对话框（pendingRetryInfo 非 null 时显示）
-        if (viewModel.pendingRetryInfo != null) {
-            RetryActionDialog(viewModel = viewModel)
-        }
-
-        // 删除确认/执行对话框（pendingDeleteInfo 非 null 时显示）
-        if (viewModel.pendingDeleteInfo != null) {
-            DeleteDynamicDialog(viewModel = viewModel)
+        // ── 统一操作对话框（重试解析 / 重试任务 / 删除）──────────────────────
+        if (viewModel.pendingAction != null) {
+            UnifiedActionDialog(viewModel = viewModel)
         }
     }
 }
@@ -158,11 +154,6 @@ fun DynamicInfoScreen(
 
 /**
  * 问题汇总面板，包含四类可展开的问题分组。
- *
- * 由于 [DynamicProblemsViewModel] 已按导航参数 type 隔离数据源，
- * 调用方无需在此处做额外的 type 过滤：
- * - type != 0 时，[missingOfficialItems] 和 [expiredItems] 自然为空，对应卡片不显示。
- * - 每类卡片只展示属于当前页面 type 的动态条目。
  */
 @Composable
 private fun ProblemsPanel(
@@ -189,7 +180,7 @@ private fun ProblemsPanel(
             modifier = Modifier.padding(bottom = 4.dp)
         )
 
-        // ── 1. 解析错误（所有 type 均可能出现）─────────────────────────────────
+        // ── 1. 解析错误 ──────────────────────────────────────────────────────
         if (parseErrors.isNotEmpty()) {
             ExpandableProblemSection(
                 title = "解析错误",
@@ -209,7 +200,7 @@ private fun ProblemsPanel(
             }
         }
 
-        // ── 2. 官方信息缺失（仅 type == 0 时由 VM 提供数据，否则列表为空不显示）─
+        // ── 2. 官方信息缺失 ──────────────────────────────────────────────────
         if (missingOfficialItems.isNotEmpty()) {
             ExpandableProblemSection(
                 title = "官方信息缺失",
@@ -236,7 +227,7 @@ private fun ProblemsPanel(
             }
         }
 
-        // ── 3. 任务执行异常（所有 type 均可能出现）─────────────────────────────
+        // ── 3. 任务执行异常 ──────────────────────────────────────────────────
         if (actionErrorItems.isNotEmpty()) {
             ExpandableProblemSection(
                 title = "任务执行异常",
@@ -263,7 +254,7 @@ private fun ProblemsPanel(
             }
         }
 
-        // ── 4. 已过开奖时间（仅 type == 0 时由 VM 提供数据，否则列表为空不显示）─
+        // ── 4. 已过开奖时间 ──────────────────────────────────────────────────
         if (expiredItems.isNotEmpty()) {
             ExpandableProblemSection(
                 title = "已过开奖时间",
@@ -317,7 +308,6 @@ private fun ExpandableProblemSection(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column {
-            // ── 标题行（可点击）────────────────────────────────────────────────
             Surface(
                 onClick = { expanded = !expanded },
                 color = headerColor,
@@ -349,7 +339,6 @@ private fun ExpandableProblemSection(
                             fontWeight = FontWeight.SemiBold,
                             color = headerContentColor
                         )
-                        // 数量徽章
                         Surface(
                             shape = CircleShape,
                             color = headerContentColor
@@ -374,7 +363,6 @@ private fun ExpandableProblemSection(
                 }
             }
 
-            // ── 展开内容 ────────────────────────────────────────────────────────
             AnimatedVisibility(
                 visible = expanded,
                 enter = expandVertically(),
@@ -406,7 +394,6 @@ private fun ProblemBadgeWrapper(
     Box {
         content()
 
-        // 右上角悬浮徽章
         Surface(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -503,6 +490,14 @@ internal fun NormalDynamicCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
 
+                    if (info.serviceId != null) {
+                        Text(
+                            text = "转发 ID: ${info.serviceId}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                        )
+                    }
+
                     if (isExpired || hasActionError) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -548,7 +543,6 @@ internal fun NormalDynamicCard(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
 
-            // ── 正文内容 ─────────────────────────────────────────────────────
             Text(
                 text = if (info.type == 2) info.content else info.description,
                 style = MaterialTheme.typography.bodyMedium
@@ -746,7 +740,7 @@ internal fun ErrorDynamicCard(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// OfficialDetailDialog
+// OfficialDetailDialog — 官方抽奖详情（独立展示，与操作对话框无关）
 // ═══════════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -841,51 +835,65 @@ private fun DetailRow(label: String, people: Int, content: String) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// RetryActionDialog — 重试任务确认 + 执行中转圈
+// UnifiedActionDialog — 统一操作对话框
+// （重试解析 / 重试任务 / 删除 共用一个 Dialog）
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * 重新执行失败 action 的 Dialog。
+ * 统一对话框，根据 [DynamicInfoViewModel.pendingAction] 的类型自动切换内容：
  *
- * 行为逻辑：
- * - **确认阶段**（[DynamicInfoViewModel.isRetrying] == false）：
- *   显示待处理动态的 ID、失败步骤摘要，以及"取消"/"开始执行"按钮。
- * - **执行阶段**（[DynamicInfoViewModel.isRetrying] == true）：
- *   隐藏按钮，显示 [CircularProgressIndicator] 和提示文字，Dialog 不可手动关闭。
- * - **完成后**：ViewModel 将 [DynamicInfoViewModel.pendingRetryInfo] 置 null，
- *   Dialog 自动消失；Room Flow 驱动卡片数据实时刷新，若所有步骤均成功则条目从
- *   "任务执行异常"展开卡片中自动移除。
+ * - **确认阶段**：显示操作摘要，提供"取消"和确认按钮。
+ * - **执行阶段**（[DynamicInfoViewModel.isExecuting] == true）：
+ *   隐藏所有按钮，显示转圈 + 提示文字，**禁止点击空白处关闭**。
+ * - **失败阶段**：在对话框内以红色显示错误信息，保持对话框不关闭，
+ *   用户可选择重试（再次点击确认）或点击取消退出。
+ * - **成功**：ViewModel 自动将 [DynamicInfoViewModel.pendingAction] 置 null，
+ *   对话框自动消失。
+ *
+ * 任何状态下点击对话框外部区域均不会关闭对话框。
  */
 @Composable
-fun RetryActionDialog(viewModel: DynamicInfoViewModel) {
-    val info = viewModel.pendingRetryInfo ?: return
-    val isRetrying = viewModel.isRetrying
+fun UnifiedActionDialog(viewModel: DynamicInfoViewModel) {
+    val pending = viewModel.pendingAction ?: return
+    val isExecuting = viewModel.isExecuting
+    val dialogError = viewModel.dialogError
+    val info = pending.info
 
-    // 计算失败的步骤列表，供用户确认时参考
-    val failedSteps = buildList {
-        if (info.repostResult != null && info.repostResult != "成功") add("转发 (${info.repostResult})")
-        if (info.likeResult   != null && info.likeResult   != "成功") add("点赞 (${info.likeResult})")
-        if (info.replyResult  != null && info.replyResult  != "成功") add("评论 (${info.replyResult})")
-        if (info.followResult != null
-            && info.followResult != "成功"
-            && info.followResult != "已经关注用户，无法重复关注"
-        ) add("关注 (${info.followResult})")
+    // ── 各类型所需的内容数据 ──────────────────────────────────────────────────
+    val title: String
+    val confirmLabel: String
+    val confirmColor: Color
+
+    when (pending.type) {
+        ActionType.RETRY_EXTRACTION -> {
+            title = if (isExecuting) "正在重新解析…" else "重新解析"
+            confirmLabel = "开始解析"
+            confirmColor = MaterialTheme.colorScheme.primary
+        }
+        ActionType.RETRY_ACTION -> {
+            title = if (isExecuting) "正在执行…" else "重新执行任务"
+            confirmLabel = "开始执行"
+            confirmColor = MaterialTheme.colorScheme.primary
+        }
+        ActionType.DELETE -> {
+            title = if (isExecuting) "正在删除…" else "确认删除"
+            confirmLabel = "确认删除"
+            confirmColor = MaterialTheme.colorScheme.error
+        }
     }
 
     AlertDialog(
-        // 执行中禁止点击外部关闭
-        onDismissRequest = { if (!isRetrying) viewModel.dismissRetryDialog() },
-        title = {
-            Text(text = if (isRetrying) "正在执行…" else "重新执行任务")
-        },
+        // 任何状态下均禁止点击空白处关闭
+        onDismissRequest = { /* 禁用，只能点取消 */ },
+        title = { Text(text = title) },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (isRetrying) {
-                    // ── 执行阶段：转圈 + 提示 ─────────────────────────────
+                if (isExecuting) {
+                    // ── 执行阶段：转圈 ────────────────────────────────────────
                     Spacer(modifier = Modifier.height(8.dp))
                     CircularProgressIndicator(
                         modifier = Modifier.size(48.dp),
@@ -893,85 +901,66 @@ fun RetryActionDialog(viewModel: DynamicInfoViewModel) {
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "正在重新处理失败的步骤，请稍候…",
+                        text = when (pending.type) {
+                            ActionType.RETRY_EXTRACTION -> "正在重新解析，请稍候…"
+                            ActionType.RETRY_ACTION    -> "正在重新处理失败的步骤，请稍候…"
+                            ActionType.DELETE          -> "正在删除，请稍候…"
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 } else {
-                    // ── 确认阶段：显示待重试信息 ──────────────────────────
-                    Text(
-                        text = "ID: ${info.dynamicId}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    // ── 确认阶段 + 错误展示阶段 ───────────────────────────────
+                    when (pending.type) {
+                        ActionType.RETRY_EXTRACTION -> RetryExtractionContent(info)
+                        ActionType.RETRY_ACTION    -> RetryActionContent(info)
+                        ActionType.DELETE          -> DeleteContent(info)
+                    }
 
-                    if (failedSteps.isNotEmpty()) {
+                    // ── 执行失败时在底部展示红色错误信息 ─────────────────────
+                    if (dialogError != null) {
                         HorizontalDivider(
                             modifier = Modifier.padding(vertical = 4.dp),
                             thickness = 1.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            color = MaterialTheme.colorScheme.errorContainer
                         )
-                        Text(
-                            text = "以下失败步骤将被重新执行：",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxWidth()
-                        )
-                        failedSteps.forEach { step ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(start = 4.dp, top = 2.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Cancel,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = step,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Error,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = dialogError,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            thickness = 1.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
-                        Text(
-                            text = "已成功的步骤将被跳过。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    } else {
-                        // 理论上不应出现，但作为兜底
-                        Text(
-                            text = "没有检测到失败的步骤，是否仍要重新执行？",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }
         },
         confirmButton = {
-            if (!isRetrying) {
-                TextButton(onClick = { viewModel.retryAction(info) }) {
-                    Text("开始执行")
+            if (!isExecuting) {
+                TextButton(onClick = { viewModel.executeCurrentAction() }) {
+                    Text(
+                        text = if (dialogError != null) "重试" else confirmLabel,
+                        color = confirmColor
+                    )
                 }
             }
         },
         dismissButton = {
-            if (!isRetrying) {
-                TextButton(onClick = { viewModel.dismissRetryDialog() }) {
+            if (!isExecuting) {
+                TextButton(onClick = { viewModel.dismissActionDialog() }) {
                     Text("取消")
                 }
             }
@@ -979,59 +968,123 @@ fun RetryActionDialog(viewModel: DynamicInfoViewModel) {
     )
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// DeleteDynamicDialog — 删除确认 + 执行中转圈 + 远端失败提示
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────────────
+// 对话框内容区块（各操作类型的确认描述）
+// ─────────────────────────────────────────────────────────────────────────────
 
+/** 重新解析：展示动态 ID 和简要说明 */
 @Composable
-fun DeleteDynamicDialog(viewModel: DynamicInfoViewModel) {
-    val info = viewModel.pendingDeleteInfo ?: return
+private fun RetryExtractionContent(info: DynamicInfoDetail) {
+    Text(
+        text = "ID: ${info.dynamicId}",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    HorizontalDivider(
+        modifier = Modifier.padding(vertical = 4.dp),
+        thickness = 1.dp,
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    )
+    Text(
+        text = info.errorMessage ?: "未知错误",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth()
+    )
+}
 
-    AlertDialog(
-        onDismissRequest = { viewModel.dismissDeleteDialog() },
-        title = { Text(text = "确认删除") },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+/** 重新执行任务：展示失败步骤列表 */
+@Composable
+private fun RetryActionContent(info: DynamicInfoDetail) {
+    val failedSteps = buildList {
+        if (info.repostResult != null && info.repostResult != "成功")
+            add("转发 (${info.repostResult})")
+        if (info.likeResult != null && info.likeResult != "成功")
+            add("点赞 (${info.likeResult})")
+        if (info.replyResult != null && info.replyResult != "成功")
+            add("评论 (${info.replyResult})")
+        if (info.followResult != null
+            && info.followResult != "成功"
+            && info.followResult != "已经关注用户，无法重复关注"
+        ) add("关注 (${info.followResult})")
+    }
+
+    Text(
+        text = "ID: ${info.dynamicId}",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    if (failedSteps.isNotEmpty()) {
+        HorizontalDivider(
+            modifier = Modifier.padding(vertical = 4.dp),
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        )
+        Text(
+            text = "以下失败步骤将被重新执行：",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth()
+        )
+        failedSteps.forEach { step ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 4.dp, top = 2.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Delete,
+                    imageVector = Icons.Default.Cancel,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(14.dp)
                 )
                 Text(
-                    text = "确定要从本地列表中删除此动态吗？",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = "ID: ${info.dynamicId}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                // 保留提示，明确告知用户 B 站端的动态依然存在
-                Text(
-                    text = "注意：此操作仅移除本地记录，不会删除哔哩哔哩平台上的原动态。",
+                    text = step,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                    textAlign = TextAlign.Center
+                    color = MaterialTheme.colorScheme.error
                 )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { viewModel.confirmDelete(info) }
-            ) {
-                Text("确认删除", color = MaterialTheme.colorScheme.error)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = { viewModel.dismissDeleteDialog() }) {
-                Text("取消")
             }
         }
+        HorizontalDivider(
+            modifier = Modifier.padding(vertical = 4.dp),
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        )
+        Text(
+            text = "已成功的步骤将被跳过。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.fillMaxWidth()
+        )
+    } else {
+        Text(
+            text = "没有检测到失败的步骤，是否仍要重新执行？",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** 删除：展示警告说明和动态 ID */
+@Composable
+private fun DeleteContent(info: DynamicInfoDetail) {
+    Icon(
+        imageVector = Icons.Default.Delete,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.error,
+        modifier = Modifier.size(36.dp)
+    )
+    Text(
+        text = "确定要删除此动态吗？",
+        style = MaterialTheme.typography.bodyMedium,
+        textAlign = TextAlign.Center
+    )
+    Text(
+        text = "ID: ${info.dynamicId}",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 }

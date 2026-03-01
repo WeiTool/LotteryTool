@@ -3,10 +3,6 @@ package com.lotterytool.data.room.dynamicInfo
 import androidx.room.ColumnInfo
 import androidx.room.DatabaseView
 
-/**
- * 一个数据库视图，用于将 DynamicInfoEntity 和 OfficialInfoEntity 连接起来。
- * 这使得我们可以用一个简单的查询同时获取动态的基本信息和官方动态的开奖时间。
- */
 @DatabaseView("""
     SELECT
         d.*,
@@ -15,10 +11,12 @@ import androidx.room.DatabaseView
         a.repostResult,
         a.likeResult,
         a.replyResult,
-        a.followResult
+        a.followResult,
+        u.serviceId AS service_id
     FROM dynamic_info AS d
     LEFT JOIN official_info AS o ON d.dynamicId = o.dynamicId
     LEFT JOIN action_info AS a ON d.dynamicId = a.dynamicId
+    LEFT JOIN user_dynamic AS u ON d.dynamicId = u.dynamicId
 """, viewName = "dynamic_info_detail")
 data class DynamicInfoDetail(
     val dynamicId: Long,
@@ -36,9 +34,11 @@ data class DynamicInfoDetail(
     @ColumnInfo(name = "official_isError")
     val officialIsError: Boolean?,
 
-    // --- 新增字段 ---
     val repostResult: String? = null,
     val likeResult: String? = null,
     val replyResult: String? = null,
-    val followResult: String? = null
+    val followResult: String? = null,
+
+    @ColumnInfo(name = "service_id")
+    val serviceId: Long? = null
 )

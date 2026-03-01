@@ -23,7 +23,7 @@ data class CardData(
 data class DescData(
     @SerializedName("rid") val rid: Long?,
     @SerializedName("uid") val uid: Long?,
-    @SerializedName("timestamp") val timestamp: Long?
+    @SerializedName("timestamp") val timestamp: Long?,
 )
 
 //card层下面card里面的需要重新json化的card

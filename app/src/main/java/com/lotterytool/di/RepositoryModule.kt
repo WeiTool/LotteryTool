@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.lotterytool.data.api.ApiServices
 import com.lotterytool.data.repository.ArticleRepository
+import com.lotterytool.data.repository.UserDynamicRepository
 import com.lotterytool.data.repository.CheckVersionRepository
 import com.lotterytool.data.repository.DynamicIdRepository
 import com.lotterytool.data.repository.DynamicInfoRepository
@@ -16,6 +17,7 @@ import com.lotterytool.data.room.dynamicID.DynamicIdsDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
 import com.lotterytool.data.room.user.UserDao
+import com.lotterytool.data.room.userDynamic.UserDynamicDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -114,5 +116,14 @@ object RepositoryModule {
         @ApplicationContext context: Context
     ): CheckVersionRepository {
         return CheckVersionRepository(apiServices, context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideCheckDynamicRepository(
+        apiServices: ApiServices,
+        userDynamicDao: UserDynamicDao
+    ): UserDynamicRepository {
+        return UserDynamicRepository(apiServices, userDynamicDao)
     }
 }

@@ -11,6 +11,7 @@ import com.lotterytool.data.models.LikeRequest
 import com.lotterytool.data.models.OfficialLotteryResponse
 import com.lotterytool.data.models.QRResponse
 import com.lotterytool.data.models.RemoveRequest
+import com.lotterytool.data.models.UserDynamicResponse
 import com.lotterytool.data.models.UserResponse
 import retrofit2.Response
 import retrofit2.http.Body
@@ -73,6 +74,14 @@ interface ApiServices {
         @Header("User-Agent") ua: String = USER_AGENT,
         @Query("qrcode_key") qrcodeKey: String,
     ): QRResponse<Execution>
+
+    @GET("https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all")
+    suspend fun getUserDynamic(
+        @Header("Cookie") cookie: String,
+        @Header("User-Agent") ua: String = USER_AGENT,
+        @Query("host_mid") mid: String,
+        @Query("offset") offset: String?,
+    ): UserDynamicResponse
 
     @GET("https://gitee.com/api/v5/repos/weitool/lottery-tool/releases")
     suspend fun checkVersion(

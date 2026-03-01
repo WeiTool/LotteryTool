@@ -35,7 +35,7 @@ class DynamicAction @Inject constructor(
         articleId: Long,
         cookie: String,
         csrf: String,
-        onProgress: suspend (current: Int, total: Int) -> Unit // 删除了 error: String?
+        onProgress: suspend (current: Int, total: Int) -> Unit
     ) {
         val successfulIds = dynamicInfoDao.getSuccessfulDynamicIds(articleId)
         val total = successfulIds.size
