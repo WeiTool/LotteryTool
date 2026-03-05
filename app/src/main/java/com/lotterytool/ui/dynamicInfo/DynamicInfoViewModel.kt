@@ -11,7 +11,7 @@ import com.lotterytool.data.repository.DynamicInfoRepository
 import com.lotterytool.data.repository.OfficialRepository
 import com.lotterytool.data.repository.actionRepository.RemoveRepository
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
-import com.lotterytool.data.room.dynamicInfo.DynamicInfoDetail
+import com.lotterytool.data.room.view.DynamicInfoDetail
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoEntity
 import com.lotterytool.data.room.user.UserDao

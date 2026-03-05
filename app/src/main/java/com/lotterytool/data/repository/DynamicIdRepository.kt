@@ -1,8 +1,8 @@
 package com.lotterytool.data.repository
 
 import com.lotterytool.data.api.ApiServices
+import com.lotterytool.data.room.dynamicID.DynamicIdEntity
 import com.lotterytool.data.room.dynamicID.DynamicIdsDao
-import com.lotterytool.data.room.dynamicID.DynamicIdsEntity
 import com.lotterytool.utils.FetchResult
 import javax.inject.Inject
 
@@ -25,52 +25,47 @@ class DynamicIdRepository @Inject constructor(
             when (response.code) {
                 0 -> {
                     // 1. 解析网络返回的新 ID 并去重
-                    val newNormalSet = mutableSetOf<Long>()
-                    val newSpecialSet = mutableSetOf<Long>()
+                    val entitiesToInsert = mutableListOf<DynamicIdEntity>()
 
                     response.data?.opus?.content?.paragraphs?.forEach { paraText ->
                         paraText.text.nodes.forEach { node ->
                             if (node.nodeType == 4) {
                                 val url = node.link.link
-                                DYNAMIC_REGEX_LEGACY.find(url)?.groupValues?.getOrNull(1)
-                                    ?.toLongOrNull()?.let { id -> newNormalSet.add(id) }
 
+                                // 匹配普通动态 ID
+                                DYNAMIC_REGEX_LEGACY.find(url)?.groupValues?.getOrNull(1)
+                                    ?.toLongOrNull()?.let { id ->
+                                        entitiesToInsert.add(
+                                            DynamicIdEntity(
+                                                articleId,
+                                                id,
+                                                isSpecial = false
+                                            )
+                                        )
+                                    }
+
+                                // 匹配特殊动态 ID
                                 SPECIAL_DYNAMIC_REGEX_LEGACY.find(url)?.groupValues?.getOrNull(1)
-                                    ?.toLongOrNull()?.let { id -> newSpecialSet.add(id) }
+                                    ?.toLongOrNull()?.let { id ->
+                                        entitiesToInsert.add(
+                                            DynamicIdEntity(
+                                                articleId,
+                                                id,
+                                                isSpecial = true
+                                            )
+                                        )
+                                    }
                             }
                         }
                     }
 
                     // 【性能优化】早期退出：如果本次解析没有新 ID，直接返回成功
                     // 避免不必要的数据库读取
-                    if (newNormalSet.isEmpty() && newSpecialSet.isEmpty()) {
+                    if (entitiesToInsert.isEmpty()) {
                         return FetchResult.Success()
                     }
 
-                    // 2. 获取本地已存在的记录
-                    val existingEntity = dynamicIdsDao.getDynamicByArticleId(articleId)
-                    val oldNormalSet = existingEntity?.normalDynamicIds?.toSet() ?: emptySet()
-                    val oldSpecialSet = existingEntity?.specialDynamicIds?.toSet() ?: emptySet()
-
-                    // 3. 合并新旧数据并自动去重（Set 特性）
-                    val finalNormalSet = oldNormalSet + newNormalSet
-                    val finalSpecialSet = oldSpecialSet + newSpecialSet
-
-                    // 4. 【性能优化核心】比对集合内容是否发生任何改变
-                    // 使用 Set 相等性比较，底层会比较元素内容而非引用
-                    // 只有当真正有新增 ID 时，才执行数据库写入
-                    val hasChanges = finalNormalSet != oldNormalSet || finalSpecialSet != oldSpecialSet
-
-
-                    if (hasChanges) {
-                        val newEntity = DynamicIdsEntity(
-                            articleId = articleId,
-                            normalDynamicIds = finalNormalSet.toList(),
-                            specialDynamicIds = finalSpecialSet.toList()
-                        )
-                        // 使用 REPLACE 策略，只在有变化时触发 Room Flow 更新
-                        dynamicIdsDao.insertDynamicIds(newEntity)
-                    }
+                    dynamicIdsDao.insertIds(entitiesToInsert)
 
                     // 即使没有变化也返回成功，因为任务本身执行成功了
                     FetchResult.Success()

@@ -14,14 +14,20 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0.2"
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "com.lotterytool.HiltTestRunner"
+
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments["room.schemaLocation"] = "$projectDir/schemas"
+            }
+        }
     }
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug" // 这会让包名变成 com.lotterytool.debug
+            applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
         release {

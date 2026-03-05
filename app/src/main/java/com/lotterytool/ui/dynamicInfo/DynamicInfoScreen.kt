@@ -64,28 +64,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.lotterytool.data.room.dynamicInfo.DynamicInfoDetail
+import com.lotterytool.data.room.view.DynamicInfoDetail
 import com.lotterytool.data.room.officialInfo.OfficialInfoEntity
 import com.lotterytool.utils.formatPublishTime
 
 @Composable
 fun DynamicInfoScreen(
     viewModel: DynamicInfoViewModel = hiltViewModel(),
-    problemsViewModel: DynamicProblemsViewModel = hiltViewModel()
+    problemsViewModel: ProblemsViewModel = hiltViewModel()
 ) {
     // 动态列表 & 官方详情
     val items by viewModel.dynamicList.collectAsStateWithLifecycle()
     val officialDetail by viewModel.officialDetail.collectAsStateWithLifecycle()
 
-    val parseErrors by problemsViewModel.parseErrors.collectAsStateWithLifecycle()
-    val missingOfficialItems by problemsViewModel.missingOfficialInfoItems.collectAsStateWithLifecycle()
-    val actionErrorItems by problemsViewModel.actionErrorItems.collectAsStateWithLifecycle()
-    val expiredItems by problemsViewModel.expiredItems.collectAsStateWithLifecycle()
-    val problemDynamicIds by problemsViewModel.problemDynamicIds.collectAsStateWithLifecycle()
+    val problemGroups by problemsViewModel.problemGroups.collectAsStateWithLifecycle()
 
     // 主列表仅显示不在任何问题分组中的动态
-    val filteredItems = remember(items, problemDynamicIds) {
-        items.filter { it.dynamicId !in problemDynamicIds }
+    val filteredItems = remember(items, problemGroups.problemDynamicIds) {
+        items.filter { it.dynamicId !in problemGroups.problemDynamicIds }
     }
 
     Box {
@@ -95,18 +91,13 @@ fun DynamicInfoScreen(
                 .statusBarsPadding()
         ) {
 
-            val hasAnyProblems = parseErrors.isNotEmpty()
-                    || missingOfficialItems.isNotEmpty()
-                    || actionErrorItems.isNotEmpty()
-                    || expiredItems.isNotEmpty()
-
-            if (hasAnyProblems) {
+            if (problemGroups.hasAnyProblems) {
                 item(key = "problem_panels") {
                     ProblemsPanel(
-                        parseErrors = parseErrors,
-                        missingOfficialItems = missingOfficialItems,
-                        actionErrorItems = actionErrorItems,
-                        expiredItems = expiredItems,
+                        parseErrors = problemGroups.parseErrors,
+                        missingOfficialItems = problemGroups.missingOfficialItems,
+                        actionErrorItems = problemGroups.actionErrorItems,
+                        expiredItems = problemGroups.expiredItems,
                         // 解析错误重试也走统一对话框
                         onRetryExtraction = { viewModel.showRetryExtraction(it) },
                         onRetryOfficial = { viewModel.showOfficialDetail(it.dynamicId) },

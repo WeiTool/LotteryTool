@@ -23,11 +23,4 @@ interface UserDao {
     // 按 mid 同步查询单个用户（供 Worker / 后台协程使用）
     @Query("SELECT * FROM users WHERE mid = :mid")
     suspend fun getUserById(mid: Long): UserEntity?
-
-    // 按 mid 同步查询单个用户
-    @Query("SELECT * FROM users WHERE mid = :mid")
-    fun getUserFlowById(mid: Long): Flow<UserEntity?>
-
-    @Query("DELETE FROM users WHERE mid = :mid")
-    suspend fun deleteUserById(mid: Long)
 }

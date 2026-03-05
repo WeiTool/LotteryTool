@@ -38,26 +38,35 @@ class ArticleRepository @Inject constructor(
             val response = apiServices.getArticleIDs(cookie, params = signedParams)
             when (response.code) {
                 0 -> {
-                    // 提取 data 里的 articles 列表
                     val articleList = response.data?.articles
+                    if (articleList.isNullOrEmpty()) return FetchResult.Error("文章列表为空")
 
-                    if (articleList.isNullOrEmpty() || articleList.any { it.id == 0L || it.publishTime == 0L }) {
-                        return FetchResult.Error("文章数据不完整或为空，已取消存库")
+                    // 获取数据库中目前已有的最早文章时间
+                    val minTimeInDb = articleDao.getMinPublishTime()
+
+                    // 如果数据库非空，则过滤掉早于该时间的文章
+                    val filteredList = if (minTimeInDb != null && minTimeInDb > 0) {
+                        articleList.filter { it.publishTime >= minTimeInDb }
+                    } else {
+                        articleList
                     }
 
-                    if (articleList.isNotEmpty()) {
-                        // 将 Ids 转换为 ArticleEntity
-                        val entities = articleList.map { item ->
-                            ArticleEntity(
-                                articleId = item.id,
-                                mid = mid,
-                                publishTime = item.publishTime,
-                                lastUpdated = System.currentTimeMillis()
-                            )
-                        }
-                        // 存入本地数据库
-                        articleDao.insertArticles(entities)
+                    if (filteredList.isEmpty()) {
+                        // 如果过滤后全没了，说明这批文章都比库里的旧
+                        return FetchResult.Success() // 或者返回特定的提示
                     }
+
+                    // 将过滤后的数据转换为 Entity 并存库
+                    val entities = filteredList.map { item ->
+                        ArticleEntity(
+                            articleId = item.id,
+                            mid = mid,
+                            publishTime = item.publishTime,
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    }
+
+                    articleDao.insertArticles(entities)
                     FetchResult.Success()
                 }
 
@@ -68,5 +77,7 @@ class ArticleRepository @Inject constructor(
             FetchResult.Error(e.localizedMessage ?: "网络请求失败")
         }
     }
+
+    // 提供给viewmodel
     fun getAllArticlesFlow() = articleDao.getAllArticles()
 }

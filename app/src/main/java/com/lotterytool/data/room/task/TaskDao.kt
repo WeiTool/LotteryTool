@@ -12,14 +12,6 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE articleId = :articleId")
     fun getTaskFlow(articleId: Long): Flow<TaskEntity?>
 
-    // 获取所有状态为 ACTION_PHASE 的 articleId
-    @Query("SELECT articleId FROM tasks WHERE state = 'ACTION_PHASE'")
-    fun getTasksInActionPhaseIds(): Flow<List<Long>>
-
-    // 获取所有状态为 state 的 articleId
-    @Query("SELECT articleId FROM tasks WHERE state = :state")
-    fun getTasksByState(state: TaskState): Flow<List<Long>>
-
     // 更新Task
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertTask(task: TaskEntity)
@@ -36,7 +28,4 @@ interface TaskDao {
     @Query("DELETE FROM tasks WHERE articleId = :articleId")
     suspend fun deleteByArticleId(articleId: Long)
 
-    // 用于监听专栏任务失败的 Flow
-    @Query("SELECT articleId FROM tasks WHERE state = 'FAILED'")
-    fun getFailedTaskIds(): Flow<List<Long>>
 }

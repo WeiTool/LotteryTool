@@ -16,6 +16,10 @@ interface ArticleDao {
     @Query("SELECT * FROM article ORDER BY publishTime DESC")
     fun getAllArticles(): Flow<List<ArticleEntity>>
 
+    // 获取存入数据库最早时间
+    @Query("SELECT MIN(publishTime) FROM article")
+    suspend fun getMinPublishTime(): Long?
+
     // 删除专栏
     @Query("DELETE FROM article WHERE articleId = :articleId")
     suspend fun deleteByArticleId(articleId: Long)

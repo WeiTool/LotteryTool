@@ -5,10 +5,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,7 +19,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
@@ -48,18 +45,15 @@ import com.lotterytool.data.room.task.TaskState
 
 @Composable
 fun DynamicListScreen(
-    viewModel: DynamicListViewModel = hiltViewModel(),
+    statusViewModel: StatusViewModel = hiltViewModel(),
+    iconViewModel: IconViewModel = hiltViewModel(),
     onNavigateToDetail: (Long, Int) -> Unit
 ) {
-    val isProcessing by viewModel.isProcessing.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
-    val progress by viewModel.progress.collectAsState()
-    val counts by viewModel.dynamicCounts.collectAsState()
-    val erroredDynamics by viewModel.erroredDynamics.collectAsState()
-    val hasExpired by viewModel.hasExpiredOfficial.collectAsState()
-    val taskState by viewModel.taskState.collectAsState()
-    val actionErrorByType by viewModel.actionErrorByType.collectAsState()
-    val hasMissing by viewModel.hasMissingOfficial.collectAsState()
+    val isProcessing by statusViewModel.isProcessing.collectAsState()
+    val errorMessage by statusViewModel.errorMessage.collectAsState()
+    val progress by statusViewModel.progress.collectAsState()
+    val taskState by statusViewModel.taskState.collectAsState()
+    val iconState by iconViewModel.iconState.collectAsState()
 
     Column(
         modifier = Modifier
@@ -70,7 +64,7 @@ fun DynamicListScreen(
     ) {
         // 1. 顶部标题
         Text(
-            text = "文章：${viewModel.articleId}",
+            text = "文章：${statusViewModel.articleId}",
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier.padding(bottom = 16.dp)
         )
@@ -78,7 +72,7 @@ fun DynamicListScreen(
         // 2. 状态与进度卡片
         StatusCard(
             isProcessing = isProcessing,
-            articleId = viewModel.articleId,
+            articleId = statusViewModel.articleId,
             errorMessage = errorMessage,
             progress = progress,
             taskState = taskState,
@@ -88,34 +82,34 @@ fun DynamicListScreen(
         Text("数据统计", style = MaterialTheme.typography.labelLarge)
         Spacer(modifier = Modifier.height(8.dp))
 
-        // 3. 统计卡片组（新增 hasActionError 参数）
+        // 3. 统计卡片组
         SummaryCard(
             label = "官方动态",
-            count = counts.official,
+            count = iconState.countType0,
             color = Color(0xFF2196F3),
-            onClick = { onNavigateToDetail(viewModel.articleId, 0) },
-            hasExpired = hasExpired,
-            hasError = erroredDynamics.any { it.type == 0 },
-            hasActionError = actionErrorByType[0] ?: false,
-            hasMissingInfo = hasMissing
+            onClick = { onNavigateToDetail(statusViewModel.articleId, 0) },
+            hasExpired = iconState.hasExpired,
+            hasError = iconState.hasParseErrorType0,
+            hasActionError = iconState.hasActionErrorType0,
+            hasMissingInfo = iconState.hasMissingOfficial
         )
 
         SummaryCard(
             label = "普通动态",
-            count = counts.normal,
+            count = iconState.countType1,
             color = Color(0xFF4CAF50),
-            onClick = { onNavigateToDetail(viewModel.articleId, 1) },
-            hasError = erroredDynamics.any { it.type == 1 },
-            hasActionError = actionErrorByType[1] ?: false
+            onClick = { onNavigateToDetail(statusViewModel.articleId, 1) },
+            hasError = iconState.hasParseErrorType1,
+            hasActionError = iconState.hasActionErrorType1
         )
 
         SummaryCard(
             label = "加码动态",
-            count = counts.special,
+            count = iconState.countType2,
             color = Color(0xFFFF9800),
-            onClick = { onNavigateToDetail(viewModel.articleId, 2) },
-            hasError = erroredDynamics.any { it.type == 2 },
-            hasActionError = actionErrorByType[2] ?: false
+            onClick = { onNavigateToDetail(statusViewModel.articleId, 2) },
+            hasError = iconState.hasParseErrorType2,
+            hasActionError = iconState.hasActionErrorType2
         )
     }
 }
@@ -126,9 +120,8 @@ fun StatusCard(
     articleId: Long,
     taskState: TaskState?,
     errorMessage: String?,
-    progress: DynamicListViewModel.ProcessProgress
+    progress: StatusViewModel.ProcessProgress
 ) {
-    // 容器颜色：错误 > 处理中 > 闲置
     val containerColor by animateColorAsState(
         targetValue = when {
             errorMessage != null -> MaterialTheme.colorScheme.errorContainer
@@ -138,10 +131,9 @@ fun StatusCard(
         label = "cardColor"
     )
 
-    // 指示灯颜色
     val indicatorColor = when {
         errorMessage != null -> MaterialTheme.colorScheme.error
-        isProcessing -> Color(0xFF4CAF50) // 运行中为绿色
+        isProcessing -> Color(0xFF4CAF50)
         else -> Color.Gray
     }
 
@@ -150,7 +142,7 @@ fun StatusCard(
         colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // 1. 顶部状态标题
+            // 顶部状态标题
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     shape = CircleShape,
@@ -171,7 +163,7 @@ fun StatusCard(
                 )
             }
 
-            // 2. 进度条区域
+            // 进度条区域
             if (isProcessing && progress.total > 0) {
                 Column(modifier = Modifier.padding(top = 12.dp, start = 22.dp)) {
                     val animatedProgress by animateFloatAsState(
@@ -182,7 +174,6 @@ fun StatusCard(
                         ),
                         label = "smoothProgress"
                     )
-
                     val animatedCurrent by animateIntAsState(
                         targetValue = progress.current,
                         animationSpec = spring(stiffness = Spring.StiffnessLow),
@@ -191,28 +182,21 @@ fun StatusCard(
 
                     LinearProgressIndicator(
                         progress = { animatedProgress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp),
+                        modifier = Modifier.fillMaxWidth().height(8.dp),
                         strokeCap = StrokeCap.Round,
                         trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
                         color = MaterialTheme.colorScheme.primary
                     )
 
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 只保留进度数值显示
                         Text(
                             text = "进度: $animatedCurrent / ${progress.total}",
                             style = MaterialTheme.typography.labelSmall
                         )
-
-                        // 移除错误计数统计，改为显示百分比
                         Text(
                             text = "${(progress.current * 100 / progress.total)}%",
                             style = MaterialTheme.typography.labelSmall,
@@ -221,7 +205,6 @@ fun StatusCard(
                     }
                 }
             } else if (isProcessing) {
-                // 如果正在处理但总数尚未获取，显示不确定进度条
                 LinearProgressIndicator(
                     modifier = Modifier
                         .padding(top = 16.dp, start = 22.dp)
@@ -231,7 +214,7 @@ fun StatusCard(
                 )
             }
 
-            // 3. 错误信息与 ID
+            // 错误信息与 ID
             if (errorMessage != null) {
                 Text(
                     text = "错误: $errorMessage",
@@ -251,11 +234,10 @@ fun StatusCard(
     }
 }
 
-
 @Composable
 fun SummaryCard(
     label: String,
-    count: Int?,
+    count: Int,
     color: Color,
     onClick: () -> Unit,
     hasExpired: Boolean = false,
@@ -264,7 +246,7 @@ fun SummaryCard(
     hasMissingInfo: Boolean = false
 ) {
     val animatedCount by animateIntAsState(
-        targetValue = count ?: 0,
+        targetValue = count,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessLow
@@ -294,9 +276,7 @@ fun SummaryCard(
                         imageVector = Icons.Default.Error,
                         contentDescription = "存在解析错误的动态",
                         tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .size(20.dp)
+                        modifier = Modifier.padding(start = 8.dp).size(20.dp)
                     )
                 }
                 if (hasExpired) {
@@ -304,9 +284,7 @@ fun SummaryCard(
                         imageVector = Icons.Default.Warning,
                         contentDescription = "存在已过期的抽奖",
                         tint = Color(0xFFFFC107),
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .size(20.dp)
+                        modifier = Modifier.padding(start = 8.dp).size(20.dp)
                     )
                 }
                 if (hasActionError) {
@@ -314,9 +292,7 @@ fun SummaryCard(
                         imageVector = Icons.Default.CloudOff,
                         contentDescription = "存在操作执行失败的动态",
                         tint = Color(0xFFE91E63),
-                        modifier = Modifier
-                            .padding(start = 8.dp)
-                            .size(20.dp)
+                        modifier = Modifier.padding(start = 8.dp).size(20.dp)
                     )
                 }
                 if (hasMissingInfo) {
@@ -328,15 +304,7 @@ fun SummaryCard(
                     )
                 }
             }
-            if (count == null) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp, 24.dp)
-                        .background(Color.Gray.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
-                )
-            } else {
-                Text("${animatedCount}个", style = MaterialTheme.typography.titleLarge, color = color)
-            }
+            Text("${animatedCount}个", style = MaterialTheme.typography.titleLarge, color = color)
         }
     }
 }

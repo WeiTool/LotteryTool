@@ -95,13 +95,8 @@ fun ArticleScreen(
     val isProcessing by buttonViewModel.isProcessing.collectAsState()
     val workStates by buttonViewModel.articleWorkStates.collectAsState()
 
-    // 从图标状态 ViewModel 获取图标相关状态
-    val errorStates by iconViewModel.articleErrorStates.collectAsState()
-    val emptyCountStates by iconViewModel.articleEmptyCountStates.collectAsState()
-    val expiredStates by iconViewModel.articleExpiredStates.collectAsState()
-    val actionErrorStates by iconViewModel.articleActionErrorStates.collectAsState()
-    val officialMissingStates by iconViewModel.articleOfficialMissingStates.collectAsState()
-    val processedStates by iconViewModel.articleProcessedStates.collectAsState()
+    // 从图标状态 ViewModel 获取图标相关状态（单个合并状态）
+    val articleStates by iconViewModel.articleStates.collectAsState()
 
     // 在 UI 层组合出全局繁忙状态
     val isBusy = isRefreshing || isProcessing
@@ -237,12 +232,7 @@ fun ArticleScreen(
                     ) { index ->
                         val article = articles[index]
                         val isRunning = workStates[article.articleId] ?: false
-                        val hasError = errorStates[article.articleId] ?: false
-                        val hasEmptyCount = emptyCountStates[article.articleId] ?: false
-                        val hasExpired = expiredStates[article.articleId] ?: false
-                        val hasActionError = actionErrorStates[article.articleId] ?: false
-                        val hasOfficialMissing = officialMissingStates[article.articleId] ?: false
-                        val isProcessed = processedStates[article.articleId] ?: false
+                        val iconState = articleStates[article.articleId] ?: ArticleIconState()
 
                         ArticleItem(
                             article = article,
@@ -260,12 +250,12 @@ fun ArticleScreen(
                             },
                             isGlobalBusy = isBusy,
                             isRunning = isRunning,
-                            hasError = hasError,
-                            hasEmptyCount = hasEmptyCount,
-                            hasExpired = hasExpired,
-                            hasActionError = hasActionError,
-                            hasOfficialMissing = hasOfficialMissing,
-                            isProcessed = isProcessed
+                            hasError = iconState.hasError,
+                            hasEmptyCount = iconState.hasMissingTypes,
+                            hasExpired = iconState.isExpired,
+                            hasActionError = iconState.hasActionError,
+                            hasOfficialMissing = iconState.hasMissingOfficialTime,
+                            isProcessed = iconState.isProcessed
                         )
                     }
                 }

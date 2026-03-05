@@ -18,6 +18,7 @@ import com.lotterytool.data.room.officialInfo.OfficialInfoDao
 import com.lotterytool.data.room.task.TaskDao
 import com.lotterytool.data.room.user.UserDao
 import com.lotterytool.data.room.userDynamic.UserDynamicDao
+import com.lotterytool.data.room.view.viewDao.DynamicInfoDetailDao
 import com.lotterytool.data.workers.ExtractDynamicWorker
 import com.lotterytool.utils.FetchResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -42,6 +43,7 @@ class ArticleViewModel @Inject constructor(
     private val articleDao: ArticleDao,
     private val userDao: UserDao,
     private val userDynamicRepository: UserDynamicRepository,
+    private val dynamicInfoDetailDao: DynamicInfoDetailDao,
     private val removeRepository: RemoveRepository,
     private val userDynamicDao: UserDynamicDao,
     savedStateHandle: SavedStateHandle
@@ -212,6 +214,17 @@ class ArticleViewModel @Inject constructor(
      *    并通过 [onComplete] 回调通知 UI 关闭/返回。
      * 6. 若存在删除失败的动态，专栏卡片与 DynamicInfoScreen 中对应条目均保持可见。
      */
+    /**
+     * 删除专栏全量数据。
+     *
+     * 删除策略（精细化删除）：
+     * 1. 通过 [DynamicInfoDetail] 视图一次性查出该专栏所有动态及其对应的 serviceId，
+     *    无需再逐条查询 user_dynamic 表，减少 N 次独立 IO。
+     * 2. [articleId] 由调用方（专栏卡片侧滑删除按钮）传入，精确标识目标专栏。
+     * 3. serviceId 为 null 的动态视为远端无对应记录，计入错误计数，本地数据保留。
+     * 4. 远端删除成功的动态才会清除本地对应的 action_info、official_info、dynamic_info 记录。
+     * 5. 存在任意错误时 Toast 提示「删除错误 X 条」；全部成功才进一步清理文章级记录。
+     */
     fun deleteArticleFull(
         articleId: Long,
         isRunning: Boolean,
@@ -233,11 +246,11 @@ class ArticleViewModel @Inject constructor(
             try {
                 _isDeleting.value = true
 
-                val allDynamicIds = dynamicInfoDao.getDynamicIdsByArticleId(articleId)
+                // 一次查询拿到该专栏所有动态及其 serviceId，替代原先两步查询
+                val details = dynamicInfoDetailDao.getDetailsByArticleId(articleId)
 
                 // 专栏下无动态时，直接清理文章级记录
-                if (allDynamicIds.isEmpty()) {
-                    actionDao.deleteByArticleId(articleId)
+                if (details.isEmpty()) {
                     dynamicIdsDao.deleteByArticleId(articleId)
                     taskDao.deleteByArticleId(articleId)
                     articleDao.deleteByArticleId(articleId)
@@ -249,12 +262,11 @@ class ArticleViewModel @Inject constructor(
                 val successfulDynamicIds = mutableListOf<Long>()
                 var errorCount = 0
 
-                for (dynamicId in allDynamicIds) {
-                    // 查找该动态在用户动态表中对应的远端 serviceId
-                    val serviceId = userDynamicDao.getServiceIdByOriginalId(dynamicId)
+                for (detail in details) {
+                    val serviceId = detail.serviceId
 
                     if (serviceId == null) {
-                        // 无法匹配 serviceId，视为删除失败
+                        // 视图中 serviceId 为 null：user_dynamic 中无对应记录，视为失败
                         errorCount++
                         kotlinx.coroutines.delay(300)
                         continue
@@ -269,7 +281,7 @@ class ArticleViewModel @Inject constructor(
                     if (result is FetchResult.Success) {
                         // 远端删除成功：同步删除本地 user_dynamic 记录
                         userDynamicDao.deleteByServiceId(serviceId)
-                        successfulDynamicIds.add(dynamicId)
+                        successfulDynamicIds.add(detail.dynamicId)
                     } else {
                         // 远端删除失败：保留本地数据，仅计入错误
                         errorCount++
@@ -278,22 +290,20 @@ class ArticleViewModel @Inject constructor(
                     kotlinx.coroutines.delay(300)
                 }
 
-                // 清理远端删除成功的动态的本地明细记录
-                for (dynamicId in successfulDynamicIds) {
-                    actionDao.deleteByDynamicId(dynamicId)
-                    officialInfoDao.deleteByDynamicIds(listOf(dynamicId))
-                    dynamicInfoDao.deleteById(dynamicId)
+                // 批量清理远端删除成功的动态的本地明细记录
+                if (successfulDynamicIds.isNotEmpty()) {
+                    actionDao.deleteByDynamicIds(successfulDynamicIds)
+                    officialInfoDao.deleteByDynamicIds(successfulDynamicIds)
+                    dynamicInfoDao.deleteByIds(successfulDynamicIds)
                 }
 
                 // 有任意删除失败：Toast 提示错误数量，保留专栏卡片与失败条目
                 if (errorCount > 0) {
                     _toastMessage.emit("删除错误 $errorCount 条")
-                    // 不执行 onComplete，专栏卡片和动态条目继续显示
                     return@launch
                 }
 
                 // 全部删除成功：清理文章级记录，触发 UI 返回/关闭
-                actionDao.deleteByArticleId(articleId)
                 dynamicIdsDao.deleteByArticleId(articleId)
                 taskDao.deleteByArticleId(articleId)
                 articleDao.deleteByArticleId(articleId)

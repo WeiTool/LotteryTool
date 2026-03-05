@@ -98,5 +98,7 @@ class UserRepository @Inject constructor(
         if (url.isNullOrEmpty()) return ""
         return url.substringAfterLast('/').substringBeforeLast('.')
     }
+
+    // 提供给viewmodel
     val allUsers: Flow<List<UserEntity>> = userDao.getAllUsersFlow()
 }

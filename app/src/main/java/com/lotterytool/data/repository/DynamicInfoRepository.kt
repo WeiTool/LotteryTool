@@ -28,28 +28,23 @@ class DynamicInfoRepository @Inject constructor(
     suspend fun processAndStoreAllDynamics(
         cookie: String,
         articleId: Long,
-        onProgress: suspend (current: Int, total: Int) -> Unit // 删除了 error: String?
+        onProgress: suspend (current: Int, total: Int) -> Unit
     ) {
-        val dynamicIdsEntity = dynamicIdsDao.getDynamicByArticleId(articleId) ?: return
-        val normals = dynamicIdsEntity.normalDynamicIds
-        val specials = dynamicIdsEntity.specialDynamicIds
-        val total = normals.size + specials.size
+        val allDynamicEntities = dynamicIdsDao.getIdsByArticleId(articleId)
 
-        if (total == 0) return
+        if (allDynamicEntities.isEmpty()) return
 
-        val taskSequence = sequence {
-            normals.forEach { yield(it to false) }
-            specials.forEach { yield(it to true) }
-        }
-
+        val total = allDynamicEntities.size
         var currentIndex = 0
 
-        for ((id, isSpecial) in taskSequence) {
+        // 2. 直接遍历实体列表
+        for (entity in allDynamicEntities) {
             if (!currentCoroutineContext().isActive) break
 
             currentIndex++
 
-            val existingInfo = dynamicInfoDao.getInfoById(id)
+            // 检查是否已经处理过（避免重复抓取）
+            val existingInfo = dynamicInfoDao.getInfoById(entity.dynamicId)
             if (existingInfo != null) {
                 onProgress(currentIndex, total)
                 continue
@@ -57,11 +52,15 @@ class DynamicInfoRepository @Inject constructor(
 
             try {
                 onProgress(currentIndex, total)
-                // 内部 fetchAndProcessDynamic 依然会处理 FetchResult.Error 并存入本地 DB
-                fetchAndProcessDynamic(cookie, id, articleId, isSpecial)
+                // 3. 修改：传递 entity 中的字段
+                fetchAndProcessDynamic(
+                    cookie = cookie,
+                    dynamicId = entity.dynamicId,
+                    articleId = articleId,
+                    isSpecial = entity.isSpecial
+                )
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                // 不再通过回调传递错误字符串
             }
 
             if (currentIndex < total) {
@@ -182,6 +181,7 @@ class DynamicInfoRepository @Inject constructor(
         return fetchAndProcessDynamic(cookie, dynamicId, articleId, isSpecial)
     }
 
+    // 提供给 viewmodel
     suspend fun deleteDynamicLocally(dynamicId: Long, isOfficial: Boolean) {
         if (isOfficial) {
             officialInfoDao.deleteOfficialById(dynamicId)

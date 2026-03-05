@@ -7,16 +7,14 @@ import androidx.room.Query
 
 @Dao
 interface DynamicIdsDao {
-    // 存入数据库
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertDynamicIds(entity: DynamicIdsEntity)
+    // 批量插入，如果已存在则忽略（符合 Set 的去重逻辑）
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIds(entities: List<DynamicIdEntity>)
 
-    // 获取本地已存在的记录
+    // 获取某篇文章下的所有 ID
     @Query("SELECT * FROM dynamic_ids WHERE articleId = :articleId")
-    suspend fun getDynamicByArticleId(articleId: Long): DynamicIdsEntity?
+    suspend fun getIdsByArticleId(articleId: Long): List<DynamicIdEntity>
 
-    // 删除动态id
     @Query("DELETE FROM dynamic_ids WHERE articleId = :articleId")
     suspend fun deleteByArticleId(articleId: Long)
-
 }
