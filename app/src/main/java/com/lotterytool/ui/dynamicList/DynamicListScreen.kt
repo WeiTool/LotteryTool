@@ -155,6 +155,7 @@ fun StatusCard(
                         errorMessage != null -> "处理失败"
                         taskState == TaskState.RUNNING -> "正在解析详情..."
                         taskState == TaskState.ACTION_PHASE -> "正在抽奖操作..."
+                        taskState == TaskState.SYNC_PHASE -> "正在同步..."
                         taskState == TaskState.SUCCESS -> "任务已完成"
                         !isProcessing -> "系统空闲"
                         else -> "准备中..."
@@ -164,7 +165,10 @@ fun StatusCard(
             }
 
             // 进度条区域
-            if (isProcessing && progress.total > 0) {
+            val showDeterminate = isProcessing && progress.total > 0 && taskState != TaskState.SYNC_PHASE
+            val showIndeterminate = isProcessing && (!showDeterminate)
+
+            if (showDeterminate) {
                 Column(modifier = Modifier.padding(top = 12.dp, start = 22.dp)) {
                     val animatedProgress by animateFloatAsState(
                         targetValue = progress.current.toFloat() / progress.total.toFloat(),
@@ -204,13 +208,16 @@ fun StatusCard(
                         )
                     }
                 }
-            } else if (isProcessing) {
+            } else if (showIndeterminate) {
+                // 状态切换中 / SYNC_PHASE / 无数量统计时，显示流动进度条
                 LinearProgressIndicator(
                     modifier = Modifier
                         .padding(top = 16.dp, start = 22.dp)
                         .fillMaxWidth()
                         .height(4.dp),
-                    strokeCap = StrokeCap.Round
+                    strokeCap = StrokeCap.Round,
+                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
 

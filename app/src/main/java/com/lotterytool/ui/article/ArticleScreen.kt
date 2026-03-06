@@ -66,6 +66,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -974,4 +975,64 @@ private fun StatusIcon(imageVector: ImageVector, color: Color) {
         tint = color,
         modifier = Modifier.size(14.dp)
     )
+}
+
+
+@Preview(showBackground = true, name = "全状态激活卡片预览")
+@Composable
+fun ArticleItemFullStatusPreview() {
+    // 模拟一个文章实体数据
+    val mockArticle = ArticleEntity(
+        articleId = 123456789L,
+        mid = 0,
+        publishTime = 0,
+        lastUpdated = 0,
+    )
+
+    // 使用项目主题包裹，确保颜色显示正确
+    MaterialTheme {
+        ArticleItem(
+            article = mockArticle,
+            onClick = {},
+            onExtractClick = {},
+            onDeleteClick = {},
+            isGlobalBusy = false,    // 全局不繁忙，使按钮可用
+            isRunning = false,       // 不在加载中，显示“处理”文字
+            isProcessed = true,      // 状态：已执行 (显示绿色打勾)
+            // --- 状态图标组全部设为 true ---
+            hasError = true,           // 红色：有出错 (Error)
+            hasEmptyCount = true,      // 蓝色：有空项 (Info)
+            hasExpired = true,         // 黄色：有开奖 (Warning)
+            hasActionError = true,     // 粉色：抽奖动作问题 (CloudOff)
+            hasOfficialMissing = true  // 紫色：官方信息缺失 (RunningWithErrors)
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "正在处理中状态")
+@Composable
+fun ArticleItemProcessingPreview() {
+    val mockArticle = ArticleEntity(
+        articleId = 123456789L,
+        mid = 0,
+        publishTime = 0,
+        lastUpdated = 0,
+    )
+
+    MaterialTheme {
+        ArticleItem(
+            article = mockArticle,
+            onClick = {},
+            onExtractClick = {},
+            onDeleteClick = {},
+            isGlobalBusy = true,    // 全局繁忙
+            isRunning = true,       // 正在运行 (显示转圈)
+            isProcessed = false,
+            hasError = false,
+            hasEmptyCount = false,
+            hasExpired = false,
+            hasActionError = false,
+            hasOfficialMissing = false
+        )
+    }
 }

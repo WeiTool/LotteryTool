@@ -18,5 +18,5 @@ data class TaskEntity(
 )
 
 enum class TaskState {
-    IDLE, RUNNING, ACTION_PHASE, SUCCESS, FAILED
+    IDLE, RUNNING, ACTION_PHASE, SYNC_PHASE, SUCCESS, FAILED
 }

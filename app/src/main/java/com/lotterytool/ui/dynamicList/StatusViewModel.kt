@@ -47,6 +47,7 @@ class StatusViewModel @Inject constructor(
                 workInfo?.state == WorkInfo.State.ENQUEUED
         entity?.state == TaskState.RUNNING ||
                 entity?.state == TaskState.ACTION_PHASE ||
+                entity?.state == TaskState.SYNC_PHASE ||
                 isWorkActive
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
