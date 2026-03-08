@@ -42,11 +42,11 @@ class ArticleRepository @Inject constructor(
                     if (articleList.isNullOrEmpty()) return FetchResult.Error("文章列表为空")
 
                     // 获取数据库中目前已有的最早文章时间
-                    val minTimeInDb = articleDao.getMinPublishTime()
+                    val maxTimeInDb = articleDao.getMaxPublishTime() ?: 0L
 
                     // 如果数据库非空，则过滤掉早于该时间的文章
-                    val filteredList = if (minTimeInDb != null && minTimeInDb > 0) {
-                        articleList.filter { it.publishTime >= minTimeInDb }
+                    val filteredList = if (maxTimeInDb > 0) {
+                        articleList.filter { it.publishTime >= maxTimeInDb }
                     } else {
                         articleList
                     }
@@ -79,5 +79,5 @@ class ArticleRepository @Inject constructor(
     }
 
     // 提供给viewmodel
-    fun getAllArticlesFlow() = articleDao.getAllArticles()
+    fun getAllArticlesFlow() = articleDao.getAllArticlesFlow()
 }

@@ -16,9 +16,12 @@ import com.lotterytool.data.room.dynamicID.DynamicIdsDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
 import com.lotterytool.data.room.task.TaskDao
+import com.lotterytool.data.room.task.TaskEntity
+import com.lotterytool.data.room.task.TaskState
 import com.lotterytool.data.room.user.UserDao
 import com.lotterytool.data.room.userDynamic.UserDynamicDao
 import com.lotterytool.data.room.view.viewDao.DynamicInfoDetailDao
+import com.lotterytool.data.room.view.viewDao.DynamicViewDao
 import com.lotterytool.data.workers.ExtractDynamicWorker
 import com.lotterytool.utils.FetchResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -30,6 +33,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.collections.filter
 
 @HiltViewModel
 class ArticleViewModel @Inject constructor(
@@ -44,6 +48,7 @@ class ArticleViewModel @Inject constructor(
     private val userDao: UserDao,
     private val userDynamicRepository: UserDynamicRepository,
     private val dynamicInfoDetailDao: DynamicInfoDetailDao,
+    private val dynamicViewDao: DynamicViewDao,
     private val removeRepository: RemoveRepository,
     private val userDynamicDao: UserDynamicDao,
     savedStateHandle: SavedStateHandle
@@ -159,26 +164,52 @@ class ArticleViewModel @Inject constructor(
     }
 
     fun startAutoProcessAll(isBusy: Boolean) {
-        val allArticles = articles.value
-        if (allArticles.isEmpty() || isBusy) return
+        viewModelScope.launch {
+            if (isBusy) return@launch
 
-        val workRequests = allArticles.map { article ->
-            OneTimeWorkRequestBuilder<ExtractDynamicWorker>()
-                .setInputData(
-                    Data.Builder()
-                        .putLong("ARTICLE_ID", article.articleId)
-                        .putLong("USER_MID", article.mid)
+            try {
+                // 获取所有文章
+                val allArticles = articleDao.getAllArticles()
+                if (allArticles.isEmpty()){
+                    _toastMessage.emit("没有任何专栏")
+                    return@launch
+                }
+
+                // 获取已成功的文章 ID 集合
+                val processedIds = dynamicViewDao.getProcessedArticleIds().toSet()
+
+                // 过滤：只保留不在 processedIds 中的文章
+                val pendingArticles = allArticles.filter { it.articleId !in processedIds }
+
+                if (pendingArticles.isEmpty()) {
+                    _toastMessage.emit("没有需要处理的任务")
+                    return@launch
+                }
+
+                // 构建 WorkRequests
+                val workRequests = pendingArticles.map { article ->
+                    OneTimeWorkRequestBuilder<ExtractDynamicWorker>()
+                        .setInputData(
+                            Data.Builder()
+                                .putLong("ARTICLE_ID", article.articleId)
+                                .putLong("USER_MID", article.mid)
+                                .build()
+                        )
+                        .addTag("extract_${article.articleId}")
                         .build()
-                )
-                .addTag("extract_${article.articleId}")
-                .build()
-        }
+                }
 
-        workManager.beginUniqueWork(
-            "AUTO_PROCESS_CHAIN",
-            ExistingWorkPolicy.REPLACE,
-            workRequests
-        ).enqueue()
+                // 提交任务链
+                workManager.beginUniqueWork(
+                    "AUTO_PROCESS_CHAIN",
+                    ExistingWorkPolicy.REPLACE,
+                    workRequests
+                ).enqueue()
+
+            } catch (e: Exception) {
+                _toastMessage.emit("启动自动处理失败: ${e.localizedMessage}")
+            }
+        }
     }
 
     fun startExtractionTask(articleId: Long, userMid: Long, isBusy: Boolean) {

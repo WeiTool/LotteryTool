@@ -10,6 +10,7 @@ import com.lotterytool.data.room.article.ArticleDao
 import com.lotterytool.data.room.article.ArticleEntity
 import com.lotterytool.data.room.dynamicID.DynamicIdEntity
 import com.lotterytool.data.room.dynamicID.DynamicIdsDao
+import com.lotterytool.data.room.dynamicInfo.DynamicDeleteDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.view.DynamicInfoDetail
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoEntity
@@ -55,5 +56,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun userDynamicDao(): UserDynamicDao
     abstract fun dynamicViewDao(): DynamicViewDao
     abstract fun dynamicInfoDetailDao(): DynamicInfoDetailDao
+    abstract fun dynamicDeleteDao(): DynamicDeleteDao
 
 }

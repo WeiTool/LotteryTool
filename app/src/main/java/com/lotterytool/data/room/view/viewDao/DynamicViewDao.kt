@@ -116,5 +116,8 @@ interface DynamicViewDao {
         GROUP BY articleId
     """)
     fun getIconStatusRow(articleId: Long, currentTimeSeconds: Long): Flow<ListIconStatusRow?>
+
+    @Query("SELECT DISTINCT articleId FROM dynamic_view WHERE taskState = 'SUCCESS'")
+    suspend fun getProcessedArticleIds(): List<Long>
 }
 

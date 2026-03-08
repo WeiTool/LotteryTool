@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -47,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -64,8 +65,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.lotterytool.data.room.view.DynamicInfoDetail
 import com.lotterytool.data.room.officialInfo.OfficialInfoEntity
+import com.lotterytool.data.room.view.DynamicInfoDetail
 import com.lotterytool.utils.formatPublishTime
 
 @Composable
@@ -90,7 +91,6 @@ fun DynamicInfoScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-
             if (problemGroups.hasAnyProblems) {
                 item(key = "problem_panels") {
                     ProblemsPanel(
@@ -108,11 +108,14 @@ fun DynamicInfoScreen(
             }
 
             // ── 正常动态列表 ──────────────────────────────────────────────────
-            items(
+            itemsIndexed(
                 items = filteredItems,
-                // 组合两个 ID 确保 Key 的绝对唯一
-                key = { info -> "${info.dynamicId}_${info.serviceId ?: 0}" }
-            ) { info ->
+                // 显式指定类型：index 为 Int，info 为 DynamicInfoDetail
+                // 组合 dynamicId、serviceId 和 index，确保即便数据源有重复对象，Key 也是唯一的
+                key = { index: Int, info: DynamicInfoDetail ->
+                    "${info.dynamicId}_${info.serviceId ?: 0}_$index"
+                }
+            ) { _: Int, info: DynamicInfoDetail ->
                 DynamicInfoItem(
                     info = info,
                     onRetry = { viewModel.showRetryExtraction(info) },
@@ -180,13 +183,16 @@ private fun ProblemsPanel(
                 headerContentColor = MaterialTheme.colorScheme.onErrorContainer,
                 headerIcon = Icons.Default.Error
             ) {
-                parseErrors.forEach { info ->
-                    ErrorDynamicCard(
-                        dynamicId = info.dynamicId,
-                        errorMessage = info.errorMessage ?: "未知错误",
-                        onRetry = { onRetryExtraction(info) }
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
+                parseErrors.forEachIndexed { index, info ->
+                    // 使用 key 确保在 Column 内部的唯一性
+                    key("${info.dynamicId}_parse_$index") {
+                        ErrorDynamicCard(
+                            dynamicId = info.dynamicId,
+                            errorMessage = info.errorMessage ?: "未知错误",
+                            onRetry = { onRetryExtraction(info) }
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
                 }
             }
         }
@@ -200,20 +206,22 @@ private fun ProblemsPanel(
                 headerContentColor = Color(0xFFE65100),
                 headerIcon = Icons.Default.RunningWithErrors
             ) {
-                missingOfficialItems.forEach { info ->
-                    ProblemBadgeWrapper(
-                        badgeIcon = Icons.Default.ErrorOutline,
-                        badgeColor = Color(0xFFE65100),
-                        badgeDescription = "官方信息缺失"
-                    ) {
-                        NormalDynamicCard(
-                            info = info,
-                            onClick = { onRetryOfficial(info) },
-                            onDelete = { onDelete(info) },
-                            onRetryAction = { onRetryAction(info) }
-                        )
+                missingOfficialItems.forEachIndexed { index, info ->
+                    key("${info.dynamicId}_${info.serviceId ?: 0}_missing_$index") {
+                        ProblemBadgeWrapper(
+                            badgeIcon = Icons.Default.ErrorOutline,
+                            badgeColor = Color(0xFFE65100),
+                            badgeDescription = "官方信息缺失"
+                        ) {
+                            NormalDynamicCard(
+                                info = info,
+                                onClick = { onRetryOfficial(info) },
+                                onDelete = { onDelete(info) },
+                                onRetryAction = { onRetryAction(info) }
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
                 }
             }
         }
@@ -227,20 +235,22 @@ private fun ProblemsPanel(
                 headerContentColor = Color(0xFFB71C1C),
                 headerIcon = Icons.Default.CloudOff
             ) {
-                actionErrorItems.forEach { info ->
-                    ProblemBadgeWrapper(
-                        badgeIcon = Icons.Default.CloudOff,
-                        badgeColor = Color(0xFFB71C1C),
-                        badgeDescription = "任务执行异常"
-                    ) {
-                        NormalDynamicCard(
-                            info = info,
-                            onClick = { onRetryOfficial(info) },
-                            onDelete = { onDelete(info) },
-                            onRetryAction = { onRetryAction(info) }
-                        )
+                actionErrorItems.forEachIndexed { index, info ->
+                    key("${info.dynamicId}_${info.serviceId ?: 0}_action_$index") {
+                        ProblemBadgeWrapper(
+                            badgeIcon = Icons.Default.CloudOff,
+                            badgeColor = Color(0xFFB71C1C),
+                            badgeDescription = "任务执行异常"
+                        ) {
+                            NormalDynamicCard(
+                                info = info,
+                                onClick = { onRetryOfficial(info) },
+                                onDelete = { onDelete(info) },
+                                onRetryAction = { onRetryAction(info) }
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
                 }
             }
         }
@@ -254,20 +264,22 @@ private fun ProblemsPanel(
                 headerContentColor = Color(0xFF2E7D32),
                 headerIcon = Icons.Default.Schedule
             ) {
-                expiredItems.forEach { info ->
-                    ProblemBadgeWrapper(
-                        badgeIcon = Icons.Default.Schedule,
-                        badgeColor = Color(0xFF2E7D32),
-                        badgeDescription = "已过开奖时间"
-                    ) {
-                        NormalDynamicCard(
-                            info = info,
-                            onClick = { onRetryOfficial(info) },
-                            onDelete = { onDelete(info) },
-                            onRetryAction = { onRetryAction(info) }
-                        )
+                expiredItems.forEachIndexed { index, info ->
+                    key("${info.dynamicId}_${info.serviceId ?: 0}_expired_$index") {
+                        ProblemBadgeWrapper(
+                            badgeIcon = Icons.Default.Schedule,
+                            badgeColor = Color(0xFF2E7D32),
+                            badgeDescription = "已过开奖时间"
+                        ) {
+                            NormalDynamicCard(
+                                info = info,
+                                onClick = { onRetryOfficial(info) },
+                                onDelete = { onDelete(info) },
+                                onRetryAction = { onRetryAction(info) }
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
                 }
             }
         }
@@ -447,7 +459,8 @@ internal fun NormalDynamicCard(
 ) {
     val isOfficial = info.type == 0
     val currentSeconds = System.currentTimeMillis() / 1000L
-    val isExpired = isOfficial && (info.officialTime ?: 0) != 0L && (info.officialTime ?: 0) < currentSeconds
+    val isExpired =
+        isOfficial && (info.officialTime ?: 0) != 0L && (info.officialTime ?: 0) < currentSeconds
 
     val hasActionError = listOf(
         info.repostResult,
@@ -861,11 +874,13 @@ fun UnifiedActionDialog(viewModel: DynamicInfoViewModel) {
             confirmLabel = "开始解析"
             confirmColor = MaterialTheme.colorScheme.primary
         }
+
         ActionType.RETRY_ACTION -> {
             title = if (isExecuting) "正在执行…" else "重新执行任务"
             confirmLabel = "开始执行"
             confirmColor = MaterialTheme.colorScheme.primary
         }
+
         ActionType.DELETE -> {
             title = if (isExecuting) "正在删除…" else "确认删除"
             confirmLabel = "确认删除"
@@ -894,8 +909,8 @@ fun UnifiedActionDialog(viewModel: DynamicInfoViewModel) {
                     Text(
                         text = when (pending.type) {
                             ActionType.RETRY_EXTRACTION -> "正在重新解析，请稍候…"
-                            ActionType.RETRY_ACTION    -> "正在重新处理失败的步骤，请稍候…"
-                            ActionType.DELETE          -> "正在删除，请稍候…"
+                            ActionType.RETRY_ACTION -> "正在重新处理失败的步骤，请稍候…"
+                            ActionType.DELETE -> "正在删除，请稍候…"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
@@ -906,8 +921,8 @@ fun UnifiedActionDialog(viewModel: DynamicInfoViewModel) {
                     // ── 确认阶段 + 错误展示阶段 ───────────────────────────────
                     when (pending.type) {
                         ActionType.RETRY_EXTRACTION -> RetryExtractionContent(info)
-                        ActionType.RETRY_ACTION    -> RetryActionContent(info)
-                        ActionType.DELETE          -> DeleteContent(info)
+                        ActionType.RETRY_ACTION -> RetryActionContent(info)
+                        ActionType.DELETE -> DeleteContent(info)
                     }
 
                     // ── 执行失败时在底部展示红色错误信息 ─────────────────────

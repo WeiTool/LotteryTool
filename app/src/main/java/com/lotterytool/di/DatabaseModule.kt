@@ -6,6 +6,7 @@ import com.lotterytool.data.room.AppDatabase
 import com.lotterytool.data.room.action.ActionDao
 import com.lotterytool.data.room.article.ArticleDao
 import com.lotterytool.data.room.dynamicID.DynamicIdsDao
+import com.lotterytool.data.room.dynamicInfo.DynamicDeleteDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.log.CrashLogDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
@@ -92,4 +93,10 @@ object DatabaseModule {
     fun provideDynamicInfoDetailDao(database: AppDatabase): DynamicInfoDetailDao {
         return database.dynamicInfoDetailDao()
     }
+
+    @Provides
+    fun provideDynamicDeleteDao(database: AppDatabase): DynamicDeleteDao {
+        return database.dynamicDeleteDao()
+    }
+
 }

@@ -14,11 +14,15 @@ interface ArticleDao {
 
     // 获取专栏数据流，用于UI展示
     @Query("SELECT * FROM article ORDER BY publishTime DESC")
-    fun getAllArticles(): Flow<List<ArticleEntity>>
+    fun getAllArticlesFlow(): Flow<List<ArticleEntity>>
+
+    // 获取所有的专栏数据，用于批量操作
+    @Query("SELECT * FROM article")
+    suspend fun getAllArticles(): List<ArticleEntity>
 
     // 获取存入数据库最早时间
-    @Query("SELECT MIN(publishTime) FROM article")
-    suspend fun getMinPublishTime(): Long?
+    @Query("SELECT MAX(publishTime) FROM article")
+    suspend fun getMaxPublishTime(): Long?
 
     // 删除专栏
     @Query("DELETE FROM article WHERE articleId = :articleId")

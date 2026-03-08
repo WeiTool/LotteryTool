@@ -14,6 +14,7 @@ import com.lotterytool.data.repository.QRRepository
 import com.lotterytool.data.repository.UserRepository
 import com.lotterytool.data.room.article.ArticleDao
 import com.lotterytool.data.room.dynamicID.DynamicIdsDao
+import com.lotterytool.data.room.dynamicInfo.DynamicDeleteDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
 import com.lotterytool.data.room.user.UserDao
@@ -70,7 +71,7 @@ object RepositoryModule {
         dynamicIdsDao: DynamicIdsDao,
         gson: Gson,
         officialRepository: OfficialRepository,
-        officialInfoDao: OfficialInfoDao
+        dynamicDeleteDao: DynamicDeleteDao
     ): DynamicInfoRepository {
         return DynamicInfoRepository(
             apiServices,
@@ -78,7 +79,7 @@ object RepositoryModule {
             dynamicIdsDao,
             gson,
             officialRepository,
-            officialInfoDao
+            dynamicDeleteDao
         )
     }
 

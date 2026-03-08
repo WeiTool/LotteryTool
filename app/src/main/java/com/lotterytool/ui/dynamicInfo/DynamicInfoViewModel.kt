@@ -247,7 +247,7 @@ class DynamicInfoViewModel @Inject constructor(
         }
 
         // 3. 远端删除成功（或无需远端删除）后，执行本地逻辑删除
-        repository.deleteDynamicLocally(info.dynamicId, info.type == 0)
+        repository.deleteDynamicLocally(info.dynamicId)
     }
 }
 

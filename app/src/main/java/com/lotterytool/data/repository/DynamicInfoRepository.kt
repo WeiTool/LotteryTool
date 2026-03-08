@@ -5,6 +5,7 @@ import com.lotterytool.data.api.ApiServices
 import com.lotterytool.data.models.ExtendData
 import com.lotterytool.data.models.Item
 import com.lotterytool.data.room.dynamicID.DynamicIdsDao
+import com.lotterytool.data.room.dynamicInfo.DynamicDeleteDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoEntity
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
@@ -23,7 +24,7 @@ class DynamicInfoRepository @Inject constructor(
     private val dynamicIdsDao: DynamicIdsDao,
     private val gson: Gson,
     private val officialRepository: OfficialRepository,
-    private val officialInfoDao: OfficialInfoDao
+    private val dynamicDeleteDao: DynamicDeleteDao
 ) {
     suspend fun processAndStoreAllDynamics(
         cookie: String,
@@ -182,10 +183,8 @@ class DynamicInfoRepository @Inject constructor(
     }
 
     // 提供给 viewmodel
-    suspend fun deleteDynamicLocally(dynamicId: Long, isOfficial: Boolean) {
-        if (isOfficial) {
-            officialInfoDao.deleteOfficialById(dynamicId)
-        }
-        dynamicInfoDao.deleteById(dynamicId)
+    suspend fun deleteDynamicLocally(dynamicId: Long) {
+        // 这里执行事务删除
+        dynamicDeleteDao.deleteFullDynamicLocally(dynamicId)
     }
 }
