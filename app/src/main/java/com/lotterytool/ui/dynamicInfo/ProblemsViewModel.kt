@@ -39,82 +39,72 @@ class ProblemsViewModel @Inject constructor(
      */
     private val refreshTicker = flow {
         while (currentCoroutineContext().isActive) {
-            emit(Unit)
+            // 发射当前系统时间（秒），确保类型是 Long
+            emit(System.currentTimeMillis() / 1000L)
             delay(60_000L)
         }
     }
 
     /**
-     * 所有问题分组，单次 Flow 订阅、单次列表遍历、单个 StateFlow。
-     *
-     * 每当 [allDynamics] 数据库推送更新，或 [refreshTicker] 每分钟到期，
-     * 对整个列表做一次分区，同时计算四类问题和合并 ID 集合，替代原先 5 个独立的
-     * StateFlow + 5 次独立的 `.map {}` / `combine()` 遍历。
-     *
-     * type 隔离规则（在遍历内部以 O(1) 分支判断，不产生额外集合分配）：
-     *  - type == 0：全部四类问题均参与分区
-     *  - type == 1 / 2：仅参与 parseErrors 和 actionErrorItems 分区；
-     *    missingOfficialItems / expiredItems 始终为空列表
+     * 将所有动态划分为 4 类问题。
+     * 逻辑修改：过期检测现在支持所有类型（官方、普通、加码）。
      */
     val problemGroups: StateFlow<ProblemGroups> =
-        combine(allDynamics, refreshTicker) { list, _ ->
-            val nowSeconds = System.currentTimeMillis() / 1000L
+        combine(allDynamics, refreshTicker) { details, now ->
+            val parseErrors = mutableListOf<DynamicInfoDetail>()
+            val missingOfficialItems = mutableListOf<DynamicInfoDetail>()
+            val actionErrorItems = mutableListOf<DynamicInfoDetail>()
+            val expiredItems = mutableListOf<DynamicInfoDetail>()
 
-            val parseErrors        = mutableListOf<DynamicInfoDetail>()
-            val missingOfficials   = mutableListOf<DynamicInfoDetail>()
-            val actionErrors       = mutableListOf<DynamicInfoDetail>()
-            val expiredItems       = mutableListOf<DynamicInfoDetail>()
-
-            for (detail in list) {
-                // ── 解析错误（所有 type） ─────────────────────────────────────
-                if (detail.errorMessage != null) {
+            details.forEach { detail ->
+                // 1. 解析错误 (所有类型通用)
+                if (detail.errorMessage != null || (detail.type == 0 && detail.officialIsError == true)) {
                     parseErrors.add(detail)
                 }
 
-                // ── type == 0 专属分组 ────────────────────────────────────────
-                if (type == 0) {
-                    // 官方信息缺失：抓取失败 或 从未抓取
-                    if (detail.officialIsError == true || detail.officialIsError == null) {
-                        missingOfficials.add(detail)
-                    }
-                    // 已过开奖时间：官方信息正常 + 时间已过
-                    if (detail.officialIsError == false
-                        && detail.officialTime != null
-                        && detail.officialTime < nowSeconds
-                    ) {
-                        expiredItems.add(detail)
+                // 2. 官方信息缺失 (仅限官方动态 type 0)
+                if (detail.type == 0) {
+                    val isMissing =
+                        (detail.officialTime != null && detail.officialIsError == null) ||
+                                (detail.officialTime == null && detail.officialIsError != null) ||
+                                detail.officialIsError == true
+                    if (isMissing) {
+                        missingOfficialItems.add(detail)
                     }
                 }
 
-                // ── 操作执行异常（所有 type） ─────────────────────────────────
+                // 3. 操作执行失败 (所有类型通用)
                 if (hasActionError(detail)) {
-                    actionErrors.add(detail)
+                    actionErrorItems.add(detail)
+                }
+
+                // 1. 获取对应的时间戳，并处理空值为 0
+                val expireTimeValue: Long = when (detail.type) {
+                    0 -> detail.officialTime ?: 0L
+                    1 -> detail.normalTime ?: 0L
+                    2 -> detail.specialTime ?: 0L
+                    else -> 0L
+                }
+
+                if (expireTimeValue > 0L && expireTimeValue < now) {
+                    expiredItems.add(detail)
                 }
             }
 
-            // 合并 ID 集合：用 flatMap + toHashSet 一次性完成，避免多次 +运算产生中间集合
-            val ids = (parseErrors.size + missingOfficials.size + actionErrors.size + expiredItems.size)
-                .let { capacity -> HashSet<Long>(capacity * 2) }
-                .also { set ->
-                    parseErrors.forEach     { set.add(it.dynamicId) }
-                    missingOfficials.forEach{ set.add(it.dynamicId) }
-                    actionErrors.forEach    { set.add(it.dynamicId) }
-                    expiredItems.forEach    { set.add(it.dynamicId) }
-                }
-
             ProblemGroups(
-                parseErrors        = parseErrors,
-                missingOfficialItems = missingOfficials,
-                actionErrorItems   = actionErrors,
-                expiredItems       = expiredItems,
-                problemDynamicIds  = ids
+                parseErrors = parseErrors,
+                missingOfficialItems = missingOfficialItems,
+                actionErrorItems = actionErrorItems,
+                expiredItems = expiredItems,
+                problemDynamicIds = (parseErrors + missingOfficialItems + actionErrorItems + expiredItems)
+                    .map { it.dynamicId }
+                    .toSet()
             )
-        }
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = ProblemGroups()
-            )
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = ProblemGroups()
+        )
 
     // ─────────────────────────────────────────────────────────────────────────────
 

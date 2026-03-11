@@ -3,7 +3,7 @@ package com.lotterytool.ui.dynamicList
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lotterytool.data.room.view.viewDao.DynamicViewDao
+import com.lotterytool.data.room.view.viewDao.DynamicInfoDetailDao
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -18,7 +18,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class IconViewModel @Inject constructor(
-    private val dynamicViewDao: DynamicViewDao,
+    private val dynamicViewDao: DynamicInfoDetailDao,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -30,8 +30,9 @@ class IconViewModel @Inject constructor(
      */
     private val refreshTicker = flow {
         while (currentCoroutineContext().isActive) {
-            emit(System.currentTimeMillis() / 1000)
-            delay(60_000)
+            // 发射当前系统时间（秒），确保类型是 Long
+            emit(System.currentTimeMillis() / 1000L)
+            delay(60_000L)
         }
     }
 
@@ -52,7 +53,9 @@ class IconViewModel @Inject constructor(
                     hasParseErrorType0  = it.hasParseErrorType0,
                     hasParseErrorType1  = it.hasParseErrorType1,
                     hasParseErrorType2  = it.hasParseErrorType2,
-                    hasExpired          = it.hasExpired,
+                    hasExpiredType0     = it.hasExpiredType0,
+                    hasExpiredType1     = it.hasExpiredType1,
+                    hasExpiredType2     = it.hasExpiredType2,
                     hasActionErrorType0 = it.hasActionErrorType0,
                     hasActionErrorType1 = it.hasActionErrorType1,
                     hasActionErrorType2 = it.hasActionErrorType2,
@@ -80,7 +83,9 @@ data class ListIconState(
     val hasParseErrorType1: Boolean = false,
     val hasParseErrorType2: Boolean = false,
 
-    val hasExpired: Boolean = false,
+    val hasExpiredType0: Boolean = false,
+    val hasExpiredType1: Boolean = false,
+    val hasExpiredType2: Boolean = false,
 
     val hasActionErrorType0: Boolean = false,
     val hasActionErrorType1: Boolean = false,

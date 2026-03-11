@@ -10,12 +10,12 @@ import androidx.lifecycle.viewModelScope
 import com.lotterytool.data.repository.DynamicInfoRepository
 import com.lotterytool.data.repository.OfficialRepository
 import com.lotterytool.data.repository.actionRepository.RemoveRepository
-import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
-import com.lotterytool.data.room.view.DynamicInfoDetail
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoEntity
 import com.lotterytool.data.room.user.UserDao
 import com.lotterytool.data.room.userDynamic.UserDynamicDao
+import com.lotterytool.data.room.view.DynamicInfoDetail
+import com.lotterytool.data.room.view.viewDao.DynamicInfoDetailDao
 import com.lotterytool.data.workers.DynamicAction
 import com.lotterytool.utils.FetchResult
 import com.lotterytool.utils.ReplyMessage
@@ -39,7 +39,7 @@ class DynamicInfoViewModel @Inject constructor(
     private val officialInfoDao: OfficialInfoDao,
     private val userDynamicDao: UserDynamicDao,
     private val removeRepository: RemoveRepository,
-    dynamicInfoDao: DynamicInfoDao,
+    private val dynamicInfoDetailDao: DynamicInfoDetailDao,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -57,7 +57,7 @@ class DynamicInfoViewModel @Inject constructor(
      * type 由导航参数传入（0=官方, 1=普通, 2=特殊）。
      */
     val dynamicList: StateFlow<List<DynamicInfoDetail>> =
-        dynamicInfoDao.getInfoByArticleAndType(articleId, type)
+        dynamicInfoDetailDao.getInfoByArticleAndType(articleId, type)
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5000),
@@ -232,8 +232,9 @@ class DynamicInfoViewModel @Inject constructor(
         // 1. 尝试从 user_dynamic 表获取对应的 serviceId（远端 ID）
         val serviceId = userDynamicDao.getServiceIdByOriginalId(info.dynamicId)
 
-        // 2. 如果有登录信息且找到了 serviceId，执行远端删除
-        if (!cookie.isNullOrBlank() && !csrf.isNullOrBlank() && serviceId != null) {
+        // 2. 执行远端删除的判定
+        // 添加条件：info.type != 2
+        if (info.type != 2 && !cookie.isNullOrBlank() && !csrf.isNullOrBlank() && serviceId != null) {
             val result = removeRepository.executeRemove(
                 cookie = cookie,
                 csrf = csrf,
@@ -245,8 +246,16 @@ class DynamicInfoViewModel @Inject constructor(
                 return
             }
         }
+        // 注意：如果 type 为 2，代码会直接跳过上面的 if 块，进入下方的本地删除逻辑
 
-        // 3. 远端删除成功（或无需远端删除）后，执行本地逻辑删除
+        // 原有的 serviceId 为空判断可以保留或根据业务微调
+        // 如果 type 为 2 且没有 serviceId，通常也应该允许本地删除
+        if (info.type != 2 && serviceId == null) {
+            // 非特殊类型但找不到远端 ID，可能数据异常，此处按原逻辑返回
+            return
+        }
+
+        // 3. 执行本地逻辑删除（无论远端是否执行，只要没报错就删本地）
         repository.deleteDynamicLocally(info.dynamicId)
     }
 }

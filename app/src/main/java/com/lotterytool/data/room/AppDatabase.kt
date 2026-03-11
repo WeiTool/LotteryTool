@@ -24,12 +24,11 @@ import com.lotterytool.data.room.user.UserDao
 import com.lotterytool.data.room.user.UserEntity
 import com.lotterytool.data.room.userDynamic.UserDynamicDao
 import com.lotterytool.data.room.userDynamic.UserDynamicEntity
-import com.lotterytool.data.room.view.DynamicView
 import com.lotterytool.data.room.view.viewDao.DynamicInfoDetailDao
-import com.lotterytool.data.room.view.viewDao.DynamicViewDao
 
 @Database(
-    entities = [UserEntity::class,
+    entities = [
+        UserEntity::class,
         ArticleEntity::class,
         DynamicIdEntity::class,
         DynamicInfoEntity::class,
@@ -39,9 +38,8 @@ import com.lotterytool.data.room.view.viewDao.DynamicViewDao
         CrashLogEntity::class,
         UserDynamicEntity::class
     ],
-    views = [DynamicInfoDetail::class,
-        DynamicView::class],
-    version = 4,
+    views = [DynamicInfoDetail::class],
+    version = 6,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -54,8 +52,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun actionDao(): ActionDao
     abstract fun crashLogDao(): CrashLogDao
     abstract fun userDynamicDao(): UserDynamicDao
-    abstract fun dynamicViewDao(): DynamicViewDao
     abstract fun dynamicInfoDetailDao(): DynamicInfoDetailDao
     abstract fun dynamicDeleteDao(): DynamicDeleteDao
-
 }

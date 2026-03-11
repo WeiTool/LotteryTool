@@ -16,12 +16,9 @@ import com.lotterytool.data.room.dynamicID.DynamicIdsDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
 import com.lotterytool.data.room.task.TaskDao
-import com.lotterytool.data.room.task.TaskEntity
-import com.lotterytool.data.room.task.TaskState
 import com.lotterytool.data.room.user.UserDao
 import com.lotterytool.data.room.userDynamic.UserDynamicDao
 import com.lotterytool.data.room.view.viewDao.DynamicInfoDetailDao
-import com.lotterytool.data.room.view.viewDao.DynamicViewDao
 import com.lotterytool.data.workers.ExtractDynamicWorker
 import com.lotterytool.utils.FetchResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -33,7 +30,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.collections.filter
 
 @HiltViewModel
 class ArticleViewModel @Inject constructor(
@@ -48,7 +44,7 @@ class ArticleViewModel @Inject constructor(
     private val userDao: UserDao,
     private val userDynamicRepository: UserDynamicRepository,
     private val dynamicInfoDetailDao: DynamicInfoDetailDao,
-    private val dynamicViewDao: DynamicViewDao,
+    private val dynamicViewDao: DynamicInfoDetailDao,
     private val removeRepository: RemoveRepository,
     private val userDynamicDao: UserDynamicDao,
     savedStateHandle: SavedStateHandle

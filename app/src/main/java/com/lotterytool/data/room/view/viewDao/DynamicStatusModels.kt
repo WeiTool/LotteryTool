@@ -26,8 +26,9 @@ data class ListIconStatusRow(
     val hasParseErrorType1: Boolean,
     val hasParseErrorType2: Boolean,
 
-    // 官方动态过期（officialTime 存在且早于当前时间）
-    val hasExpired: Boolean,
+    val hasExpiredType0: Boolean = false,
+    val hasExpiredType1: Boolean = false,
+    val hasExpiredType2: Boolean = false,
 
     // 操作执行失败（按 type）
     val hasActionErrorType0: Boolean,

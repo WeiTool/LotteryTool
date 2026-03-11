@@ -2,7 +2,7 @@ package com.lotterytool.ui.article
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lotterytool.data.room.view.viewDao.DynamicViewDao
+import com.lotterytool.data.room.view.viewDao.DynamicInfoDetailDao
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -14,11 +14,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import javax.inject.Inject
-import kotlin.collections.associate
 
 @HiltViewModel
 class IconViewModel @Inject constructor(
-    private val dynamicViewDao: DynamicViewDao,
+    private val dynamicViewDao: DynamicInfoDetailDao,
 ) : ViewModel() {
 
     /**
@@ -27,8 +26,9 @@ class IconViewModel @Inject constructor(
      */
     private val refreshTicker = flow {
         while (currentCoroutineContext().isActive) {
-            emit(System.currentTimeMillis() / 1000)
-            delay(60_000)
+            // 发射当前系统时间（秒），确保类型是 Long
+            emit(System.currentTimeMillis() / 1000L)
+            delay(60_000L)
         }
     }
 

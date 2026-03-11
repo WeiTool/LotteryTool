@@ -90,7 +90,9 @@ class DynamicInfoRepository @Inject constructor(
                 timestamp = System.currentTimeMillis() / 1000L,
                 uid = 0, rid = 0,
                 type = if (isSpecial) 2 else 1,
-                errorMessage = msg
+                errorMessage = msg,
+                normalTime = null,
+                specialTime = null,
             )
             dynamicInfoDao.insertDynamicInfo(errorEntity)
         }
@@ -130,6 +132,7 @@ class DynamicInfoRepository @Inject constructor(
                 else -> 1
             }
 
+
             // 4. 如果是官方动态，尝试同步抓取（此处需额外捕获异常防止干扰主流程）
             if (finalType == 0) {
                 try {
@@ -148,7 +151,22 @@ class DynamicInfoRepository @Inject constructor(
                 }
             } else null
 
-            // 6. 构造实体并保存
+            // 6. 识别时间存入数据库
+            var normalTime: Long? = null
+            var specialTime: Long? = null
+
+            when (finalType) {
+                1 -> {
+                    // type 1 从 description 解析存入 normalTime
+                    normalTime = parseTimeToSeconds(item?.item?.description ?: "")
+                }
+                2 -> {
+                    // type 2 从 description 解析存入 specialTime
+                    specialTime = parseTimeToSeconds(item?.item?.description ?: "")
+                }
+            }
+
+            // 构造实体并保存
             val entity = DynamicInfoEntity(
                 dynamicId = dynamicId,
                 articleId = articleId,
@@ -158,6 +176,8 @@ class DynamicInfoRepository @Inject constructor(
                 uid = desc.uid ?: 0L,
                 rid = desc.rid ?: 0L,
                 type = finalType,
+                normalTime = normalTime,
+                specialTime = specialTime,
                 errorMessage = if (item == null && !data.secondCard.isNullOrBlank()) "JSON内容解析异常" else null
             )
 
@@ -169,6 +189,33 @@ class DynamicInfoRepository @Inject constructor(
             saveErrorToDb(errorMsg)
             FetchResult.Error(errorMsg)
         }
+    }
+
+    private fun parseTimeToSeconds(text: String): Long? {
+        // 定义开奖相关的关键词
+        val keywords = listOf("抽", "开奖", "截止", "公布")
+
+        // 如果文段中根本没提到这些词，大概率不是我们要找的开奖日期
+        if (keywords.none { text.contains(it) }) return null
+
+        val regex = "((\\d{4})[年./-])?(\\d{1,2})[月./-](\\d{1,2})[日号]?(\\s*(\\d{1,2})[:点时](\\d{2})?)?".toRegex()
+
+        val matchResult = regex.findAll(text).lastOrNull() ?: return null
+
+        val groups = matchResult.groupValues
+
+        val calendar = java.util.Calendar.getInstance()
+
+        // 对应上面的索引
+        val year = if (groups[2].isNotEmpty()) groups[2].toInt() else calendar.get(java.util.Calendar.YEAR)
+        val month = groups[3].toInt() - 1 // Calendar 月份从 0 开始
+        val day = groups[4].toInt()
+        val hour = if (groups[6].isNotEmpty()) groups[6].toInt() else 0
+
+        calendar.set(year, month, day, hour, 0, 0)
+        calendar.set(java.util.Calendar.MILLISECOND, 0)
+
+        return calendar.timeInMillis / 1000L
     }
 
     suspend fun retrySingleDynamic(

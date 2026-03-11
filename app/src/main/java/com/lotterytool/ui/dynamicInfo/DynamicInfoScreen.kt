@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -46,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -81,8 +82,10 @@ fun DynamicInfoScreen(
     val problemGroups by problemsViewModel.problemGroups.collectAsStateWithLifecycle()
 
     // 主列表仅显示不在任何问题分组中的动态
-    val filteredItems = remember(items, problemGroups.problemDynamicIds) {
-        items.filter { it.dynamicId !in problemGroups.problemDynamicIds }
+    val filteredItems by remember(items, problemGroups.problemDynamicIds) {
+        derivedStateOf {
+            items.filter { it.dynamicId !in problemGroups.problemDynamicIds }
+        }
     }
 
     Box {
@@ -108,14 +111,10 @@ fun DynamicInfoScreen(
             }
 
             // ── 正常动态列表 ──────────────────────────────────────────────────
-            itemsIndexed(
+            items(
                 items = filteredItems,
-                // 显式指定类型：index 为 Int，info 为 DynamicInfoDetail
-                // 组合 dynamicId、serviceId 和 index，确保即便数据源有重复对象，Key 也是唯一的
-                key = { index: Int, info: DynamicInfoDetail ->
-                    "${info.dynamicId}_${info.serviceId ?: 0}_$index"
-                }
-            ) { _: Int, info: DynamicInfoDetail ->
+                key = { it.dynamicId }
+            ) { info: DynamicInfoDetail ->
                 DynamicInfoItem(
                     info = info,
                     onRetry = { viewModel.showRetryExtraction(info) },

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,10 +20,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.RunningWithErrors
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
@@ -40,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.lotterytool.data.room.task.TaskState
 
@@ -88,7 +92,7 @@ fun DynamicListScreen(
             count = iconState.countType0,
             color = Color(0xFF2196F3),
             onClick = { onNavigateToDetail(statusViewModel.articleId, 0) },
-            hasExpired = iconState.hasExpired,
+            hasExpired = iconState.hasExpiredType0,
             hasError = iconState.hasParseErrorType0,
             hasActionError = iconState.hasActionErrorType0,
             hasMissingInfo = iconState.hasMissingOfficial
@@ -99,6 +103,7 @@ fun DynamicListScreen(
             count = iconState.countType1,
             color = Color(0xFF4CAF50),
             onClick = { onNavigateToDetail(statusViewModel.articleId, 1) },
+            hasExpired = iconState.hasExpiredType1,
             hasError = iconState.hasParseErrorType1,
             hasActionError = iconState.hasActionErrorType1
         )
@@ -108,9 +113,45 @@ fun DynamicListScreen(
             count = iconState.countType2,
             color = Color(0xFFFF9800),
             onClick = { onNavigateToDetail(statusViewModel.articleId, 2) },
+            hasExpired = iconState.hasExpiredType2,
             hasError = iconState.hasParseErrorType2,
             hasActionError = iconState.hasActionErrorType2
         )
+        Spacer(modifier = Modifier.height(8.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f), // 使用淡色容器背景
+            shape = RoundedCornerShape(12.dp), // 圆角
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)) // 浅浅的边框增加质感
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary, // 图标颜色与主题呼应
+                    modifier = Modifier.size(20.dp)
+                )
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column {
+                    Text(
+                        text = "关于加码动态",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                    Text(
+                        text = "此类动态仅支持删除本地数据，操作不会同步至 Bilibili 远端，请手动处理原动态。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+        }
     }
 }
 

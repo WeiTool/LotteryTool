@@ -1,19 +1,49 @@
 package com.lotterytool.ui.user
 
+import android.content.Context
+import android.content.Intent
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -23,11 +53,13 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import com.lotterytool.data.room.user.UserEntity
 
@@ -45,55 +77,67 @@ fun UserScreen(onCardClick: (Long) -> Unit, viewModel: UserViewModel) {
         LoginDialog(qrState = qrState, onDismiss = { viewModel.resetQRState() })
     }
 
-    PullToRefreshBox(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding(),
-        isRefreshing = isRefreshing,
-        onRefresh = { viewModel.refresh() },
-        contentAlignment = Alignment.TopCenter
-    ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+    // 使用 Box 作为根布局，以便在右下角放置浮动按钮
+    Box(modifier = Modifier.fillMaxSize()) {
+        PullToRefreshBox(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding(),
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.refresh() },
+            contentAlignment = Alignment.TopCenter
         ) {
-            // 全局错误信息：显示扫码失败 (0L) 或 全局刷新异常 (-1L)
-            val globalError = userErrors[0L] ?: userErrors[-1L]
-            globalError?.let { msg ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 全局错误信息：显示扫码失败 (0L) 或 全局刷新异常 (-1L)
+                val globalError = userErrors[0L] ?: userErrors[-1L]
+                globalError?.let { msg ->
+                    item {
+                        ErrorUserCard(message = msg)
+                    }
+                }
+
+                // 正常用户列表
+                items(
+                    items = userList,
+                    key = { it.mid }
+                ) { user ->
+                    // 检查当前 mid 是否有错误信息
+                    val specificError = userErrors[user.mid]
+
+                    UserCard(
+                        user = user,
+                        errorMessage = specificError,
+                        onClick = { onCardClick(user.mid) }
+                    )
+                }
+
+                // 列表底部的添加按钮（保留原样）
                 item {
-                    ErrorUserCard(message = msg)
+                    AddUserCard(onClick = { viewModel.startLoginProcess() })
+                }
+
+                // 为悬浮按钮留出底部空间，防止遮挡列表内容
+                item {
+                    Spacer(modifier = Modifier.height(80.dp))
                 }
             }
-
-            // 正常用户列表
-            items(
-                items = userList,
-                key = { it.mid }
-            ) { user ->
-                // 检查当前 mid 是否有错误信息
-                val specificError = userErrors[user.mid]
-
-                UserCard(
-                    user = user,
-                    errorMessage = specificError,
-                    onClick = { onCardClick(user.mid) }
-                )
-            }
-
-            // 添加按钮
-            item {
-                AddUserCard(onClick = { viewModel.startLoginProcess() })
-            }
         }
+
+        // --- 右下角正方形圆角按钮 ---
+        WebAndChuckerFab(
+            modifier = Modifier.align(Alignment.BottomEnd)
+        )
     }
 }
-
 @Composable
 fun UserCard(
     user: UserEntity,
     errorMessage: String? = null,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
     val isError = errorMessage != null
 
@@ -322,49 +366,48 @@ fun LoginDialog(qrState: QRState, onDismiss: () -> Unit) {
     }
 }
 
-@Preview(showBackground = true, name = "1. 二维码获取中")
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun PreviewQRDialogLoading() {
-    MaterialTheme {
-        LoginDialog(
-            qrState = QRState.Loading,
-            onDismiss = {}
-        )
-    }
-}
+fun WebAndChuckerFab(
+    modifier: Modifier = Modifier,
+    context: Context = LocalContext.current
+) {
+    val url = "https://gitee.com/weitool/lottery-tool/releases"
+    val view = LocalView.current
 
-@Preview(showBackground = true, name = "2. 二维码获取成功")
-@Composable
-fun PreviewQRDialogSuccess() {
-    // 模拟一个空的 Bitmap 用于预览显示
-    val emptyBitmap = android.graphics.Bitmap.createBitmap(100, 100, android.graphics.Bitmap.Config.ARGB_8888)
-
-    MaterialTheme {
-        LoginDialog(
-            qrState = QRState.Success(emptyBitmap, "mock_key"),
-            onDismiss = {}
-        )
-    }
-}
-
-@Preview(showBackground = true, name = "3. 扫码成功-验证中")
-@Composable
-fun PreviewQRDialogVerifying() {
-    MaterialTheme {
-        LoginDialog(
-            qrState = QRState.Verifying,
-            onDismiss = {}
-        )
-    }
-}
-
-@Preview(showBackground = true, name = "4. 获取失败报错")
-@Composable
-fun PreviewQRDialogError() {
-    MaterialTheme {
-        LoginDialog(
-            qrState = QRState.Error("二维码已过期，请重新获取"),
-            onDismiss = {}
-        )
+    // 使用 Surface 代替原生的 FloatingActionButton
+    Surface(
+        modifier = modifier
+            .padding(24.dp)
+            .size(56.dp), // 标准 FAB 尺寸
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primary,
+        tonalElevation = 6.dp, // 设置海拔高度（阴影）
+        shadowElevation = 6.dp
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .combinedClickable(
+                    onClick = {
+                        // 短按逻辑
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    },
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Link,
+                contentDescription = "点击打开网页，长按调试",
+                tint = MaterialTheme.colorScheme.onPrimary
+            )
+        }
     }
 }

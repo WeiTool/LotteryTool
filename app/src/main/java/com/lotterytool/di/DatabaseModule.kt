@@ -14,7 +14,6 @@ import com.lotterytool.data.room.task.TaskDao
 import com.lotterytool.data.room.user.UserDao
 import com.lotterytool.data.room.userDynamic.UserDynamicDao
 import com.lotterytool.data.room.view.viewDao.DynamicInfoDetailDao
-import com.lotterytool.data.room.view.viewDao.DynamicViewDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -82,11 +81,6 @@ object DatabaseModule {
     @Provides
     fun provideUserDynamicDao(database: AppDatabase): UserDynamicDao {
         return database.userDynamicDao()
-    }
-
-    @Provides
-    fun provideDynamicViewDao(database: AppDatabase): DynamicViewDao {
-        return database.dynamicViewDao()
     }
 
     @Provides

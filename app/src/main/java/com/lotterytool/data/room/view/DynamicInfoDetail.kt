@@ -17,6 +17,8 @@ import com.lotterytool.data.room.task.TaskState
             d.rid,
             d.type,
             d.errorMessage          AS error_message,
+            d.specialTime,        
+            d.normalTime,           
             di.isSpecial,
             ar.mid                  AS article_mid,
             ar.publishTime          AS article_publish_time,
@@ -67,6 +69,8 @@ data class DynamicInfoDetail(
     val type: Int,
     @ColumnInfo(name = "error_message")
     val errorMessage: String? = null,
+    val specialTime: Long? = null,
+    val normalTime: Long? = null,
 
     // ── dynamic_ids ───────────────────────────────────────────────────────────
     val isSpecial: Boolean? = null,
