@@ -26,9 +26,14 @@ class DynamicInfoRepository @Inject constructor(
     private val officialRepository: OfficialRepository,
     private val dynamicDeleteDao: DynamicDeleteDao
 ) {
+    /**
+     * @param forceRefresh true 时跳过"已处理"检查，强制重新抓取所有动态（重试场景）。
+     *                     false 时保持原有行为，已成功抓取的动态直接跳过。
+     */
     suspend fun processAndStoreAllDynamics(
         cookie: String,
         articleId: Long,
+        forceRefresh: Boolean = false,
         onProgress: suspend (current: Int, total: Int) -> Unit
     ) {
         val allDynamicEntities = dynamicIdsDao.getIdsByArticleId(articleId)
@@ -38,22 +43,22 @@ class DynamicInfoRepository @Inject constructor(
         val total = allDynamicEntities.size
         var currentIndex = 0
 
-        // 2. 直接遍历实体列表
         for (entity in allDynamicEntities) {
             if (!currentCoroutineContext().isActive) break
 
             currentIndex++
 
-            // 检查是否已经处理过（避免重复抓取）
-            val existingInfo = dynamicInfoDao.getInfoById(entity.dynamicId)
-            if (existingInfo != null) {
-                onProgress(currentIndex, total)
-                continue
+            // forceRefresh=true 时跳过此检查，强制重新请求网络
+            if (!forceRefresh) {
+                val existingInfo = dynamicInfoDao.getInfoById(entity.dynamicId)
+                if (existingInfo != null) {
+                    onProgress(currentIndex, total)
+                    continue
+                }
             }
 
             try {
                 onProgress(currentIndex, total)
-                // 3. 修改：传递 entity 中的字段
                 fetchAndProcessDynamic(
                     cookie = cookie,
                     dynamicId = entity.dynamicId,
@@ -100,7 +105,6 @@ class DynamicInfoRepository @Inject constructor(
         return@withContext try {
             val response = apiServices.getDynamicInfo(cookie = cookie, dynamicId = dynamicId)
 
-            // 1. API 响应状态检查
             if (response.code != 0) {
                 val errorMsg = if (response.code == 4128001) "频率限制" else response.message
                 saveErrorToDb(errorMsg)
@@ -115,7 +119,6 @@ class DynamicInfoRepository @Inject constructor(
                 return@withContext FetchResult.Error(errorMsg)
             }
 
-            // 2. 安全解析 ExtendJson (判定是否为官方抽奖)
             val isOfficial = if (!data.extendJson.isNullOrBlank()) {
                 try {
                     val extendData = gson.fromJson(data.extendJson, ExtendData::class.java)
@@ -125,48 +128,35 @@ class DynamicInfoRepository @Inject constructor(
                 }
             } else false
 
-            // 3. 确定最终类型
             val finalType = when {
                 isSpecial -> 2
                 isOfficial -> 0
                 else -> 1
             }
 
-
-            // 4. 如果是官方动态，尝试同步抓取（此处需额外捕获异常防止干扰主流程）
             if (finalType == 0) {
                 try {
                     officialRepository.fetchOfficial(cookie, dynamicId)
                 } catch (_: Exception) {
-                    // 记录日志但不中止，因为基础动态信息仍可保存
                 }
             }
 
-            // 5. 安全解析 SecondCard (核心内容)
             val item = if (!data.secondCard.isNullOrBlank()) {
                 try {
                     gson.fromJson(data.secondCard, Item::class.java)
                 } catch (_: Exception) {
-                    null // 解析失败返回 null，后续使用默认值
+                    null
                 }
             } else null
 
-            // 6. 识别时间存入数据库
             var normalTime: Long? = null
             var specialTime: Long? = null
 
             when (finalType) {
-                1 -> {
-                    // type 1 从 description 解析存入 normalTime
-                    normalTime = parseTimeToSeconds(item?.item?.description ?: "")
-                }
-                2 -> {
-                    // type 2 从 description 解析存入 specialTime
-                    specialTime = parseTimeToSeconds(item?.item?.description ?: "")
-                }
+                1 -> normalTime = parseTimeToSeconds(item?.item?.description ?: "")
+                2 -> specialTime = parseTimeToSeconds(item?.item?.description ?: "")
             }
 
-            // 构造实体并保存
             val entity = DynamicInfoEntity(
                 dynamicId = dynamicId,
                 articleId = articleId,
@@ -192,23 +182,16 @@ class DynamicInfoRepository @Inject constructor(
     }
 
     private fun parseTimeToSeconds(text: String): Long? {
-        // 定义开奖相关的关键词
         val keywords = listOf("抽", "开奖", "截止", "公布")
-
-        // 如果文段中根本没提到这些词，大概率不是我们要找的开奖日期
         if (keywords.none { text.contains(it) }) return null
 
         val regex = "((\\d{4})[年./-])?(\\d{1,2})[月./-](\\d{1,2})[日号]?(\\s*(\\d{1,2})[:点时](\\d{2})?)?".toRegex()
-
         val matchResult = regex.findAll(text).lastOrNull() ?: return null
-
         val groups = matchResult.groupValues
-
         val calendar = java.util.Calendar.getInstance()
 
-        // 对应上面的索引
         val year = if (groups[2].isNotEmpty()) groups[2].toInt() else calendar.get(java.util.Calendar.YEAR)
-        val month = groups[3].toInt() - 1 // Calendar 月份从 0 开始
+        val month = groups[3].toInt() - 1
         val day = groups[4].toInt()
         val hour = if (groups[6].isNotEmpty()) groups[6].toInt() else 0
 
@@ -224,14 +207,10 @@ class DynamicInfoRepository @Inject constructor(
         articleId: Long,
         isSpecial: Boolean
     ): FetchResult<Unit> {
-        // 逻辑与 fetchAndProcessDynamic 一致
-        // 重新抓取成功后，Room 的 OnConflictStrategy.REPLACE 会自动覆盖掉之前的错误记录
         return fetchAndProcessDynamic(cookie, dynamicId, articleId, isSpecial)
     }
 
-    // 提供给 viewmodel
     suspend fun deleteDynamicLocally(dynamicId: Long) {
-        // 这里执行事务删除
         dynamicDeleteDao.deleteFullDynamicLocally(dynamicId)
     }
 }

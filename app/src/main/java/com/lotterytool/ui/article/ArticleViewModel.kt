@@ -51,27 +51,21 @@ class ArticleViewModel @Inject constructor(
 ) : ViewModel() {
     val userMid: Long = savedStateHandle["mid"] ?: 0L
 
-    // 加载状态
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing = _isRefreshing.asStateFlow()
 
-    // 删除状态
     private val _isDeleting = MutableStateFlow(false)
     val isDeleting = _isDeleting.asStateFlow()
 
-    // 错误信息（列表加载）
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage = _errorMessage.asStateFlow()
 
-    // 同步数据 Dialog 错误信息（专供 loadServiceId 失败后在 Dialog 内展示）
     private val _syncDialogError = MutableStateFlow<String?>(null)
     val syncDialogError = _syncDialogError.asStateFlow()
 
-    // Toast 通知（所有需要 toast 的场景，包括 deleteArticleFull 的成功与失败）
     private val _toastMessage = MutableSharedFlow<String>()
     val toastMessage = _toastMessage.asSharedFlow()
 
-    // 获取专栏列表数据流
     val articles = articleRepository.getAllArticlesFlow()
         .stateIn(
             viewModelScope,
@@ -109,19 +103,10 @@ class ArticleViewModel @Inject constructor(
         }
     }
 
-    /**
-     * 同步动态服务 ID。
-     * - 成功：_syncDialogError 保持 null，_isRefreshing 归 false → Screen 侧自动关闭 Dialog。
-     * - 失败：将错误写入 _syncDialogError，Dialog 展示「重试 / 取消」。
-     */
-    fun loadServiceId(
-        isRunning: Boolean,
-        isGlobalBusy: Boolean,
-    ) {
+    fun loadServiceId(isRunning: Boolean, isGlobalBusy: Boolean) {
         viewModelScope.launch {
             try {
                 _isRefreshing.value = true
-                // 每次发起请求时先清空上次的错误，保持 Dialog 内状态干净
                 _syncDialogError.value = null
 
                 if (isRunning || isGlobalBusy) {
@@ -141,10 +126,8 @@ class ArticleViewModel @Inject constructor(
                 )
 
                 if (result is FetchResult.Error) {
-                    // 失败：写入 Dialog 专用错误，不关 Dialog
                     _syncDialogError.value = result.message
                 }
-                // 成功：_syncDialogError 为 null，Screen 侧 LaunchedEffect 检测到后自动关 Dialog
 
             } catch (e: Exception) {
                 _syncDialogError.value = "请求发生错误: ${e.localizedMessage}"
@@ -154,7 +137,6 @@ class ArticleViewModel @Inject constructor(
         }
     }
 
-    /** 用于「取消」按钮或 Dialog 关闭时清除同步错误状态 */
     fun clearSyncDialogError() {
         _syncDialogError.value = null
     }
@@ -164,17 +146,13 @@ class ArticleViewModel @Inject constructor(
             if (isBusy) return@launch
 
             try {
-                // 获取所有文章
                 val allArticles = articleDao.getAllArticles()
-                if (allArticles.isEmpty()){
+                if (allArticles.isEmpty()) {
                     _toastMessage.emit("没有任何专栏")
                     return@launch
                 }
 
-                // 获取已成功的文章 ID 集合
                 val processedIds = dynamicViewDao.getProcessedArticleIds().toSet()
-
-                // 过滤：只保留不在 processedIds 中的文章
                 val pendingArticles = allArticles.filter { it.articleId !in processedIds }
 
                 if (pendingArticles.isEmpty()) {
@@ -182,25 +160,30 @@ class ArticleViewModel @Inject constructor(
                     return@launch
                 }
 
-                // 构建 WorkRequests
+                // 自动处理全量专栏，均为首次处理，forceRefresh = false
                 val workRequests = pendingArticles.map { article ->
                     OneTimeWorkRequestBuilder<ExtractDynamicWorker>()
                         .setInputData(
                             Data.Builder()
                                 .putLong("ARTICLE_ID", article.articleId)
                                 .putLong("USER_MID", article.mid)
+                                .putBoolean("FORCE_REFRESH", false)
                                 .build()
                         )
                         .addTag("extract_${article.articleId}")
+                        .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                         .build()
                 }
 
-                // 提交任务链
-                workManager.beginUniqueWork(
+                var chain = workManager.beginUniqueWork(
                     "AUTO_PROCESS_CHAIN",
                     ExistingWorkPolicy.REPLACE,
-                    workRequests
-                ).enqueue()
+                    workRequests.first()
+                )
+                for (request in workRequests.drop(1)) {
+                    chain = chain.then(request)
+                }
+                chain.enqueue()
 
             } catch (e: Exception) {
                 _toastMessage.emit("启动自动处理失败: ${e.localizedMessage}")
@@ -208,50 +191,33 @@ class ArticleViewModel @Inject constructor(
         }
     }
 
-    fun startExtractionTask(articleId: Long, userMid: Long, isBusy: Boolean) {
+    /**
+     * @param forceRefresh 已处理过的专栏点"重试"时传 true，首次点"处理"时传 false。
+     *                     为 true 时 Worker 会跳过"已处理"检查，强制重新抓取所有动态。
+     */
+    fun startExtractionTask(articleId: Long, userMid: Long, isBusy: Boolean, forceRefresh: Boolean) {
         if (isBusy) return
 
         val inputData = Data.Builder()
             .putLong("ARTICLE_ID", articleId)
             .putLong("USER_MID", userMid)
+            .putBoolean("FORCE_REFRESH", forceRefresh)
             .build()
 
         val request = OneTimeWorkRequestBuilder<ExtractDynamicWorker>()
             .setInputData(inputData)
             .addTag("extract_$articleId")
             .addTag("MANUAL_EXTRACT")
+            .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
 
         workManager.enqueueUniqueWork(
             "unique_extract_$articleId",
-            ExistingWorkPolicy.KEEP,
+            ExistingWorkPolicy.REPLACE,
             request
         )
     }
 
-    /**
-     * 删除专栏全量数据。
-     *
-     * 删除策略（精细化删除）：
-     * 1. 逐条处理该专栏下的每个动态，依据 [ dynamicId ] 查找对应的 [ serviceId ] 。
-     * 2. 若某条动态找不到匹配的 [ serviceId ]，或远端删除请求失败，则该条计入错误计数。
-     * 3. 远端删除成功的动态才会清除本地对应的 action_info、official_info、dynamic_info 记录。
-     * 4. 存在任意错误时通过 Toast 提示「删除错误 X 条」；成功数量不额外提示。
-     * 5. 仅当所有动态均删除成功时，才进一步删除 dynamic_ids、task、article 记录，
-     *    并通过 [onComplete] 回调通知 UI 关闭/返回。
-     * 6. 若存在删除失败的动态，专栏卡片与 DynamicInfoScreen 中对应条目均保持可见。
-     */
-    /**
-     * 删除专栏全量数据。
-     *
-     * 删除策略（精细化删除）：
-     * 1. 通过 [DynamicInfoDetail] 视图一次性查出该专栏所有动态及其对应的 serviceId，
-     *    无需再逐条查询 user_dynamic 表，减少 N 次独立 IO。
-     * 2. [articleId] 由调用方（专栏卡片侧滑删除按钮）传入，精确标识目标专栏。
-     * 3. serviceId 为 null 的动态视为远端无对应记录，计入错误计数，本地数据保留。
-     * 4. 远端删除成功的动态才会清除本地对应的 action_info、official_info、dynamic_info 记录。
-     * 5. 存在任意错误时 Toast 提示「删除错误 X 条」；全部成功才进一步清理文章级记录。
-     */
     fun deleteArticleFull(
         articleId: Long,
         isRunning: Boolean,
@@ -273,10 +239,8 @@ class ArticleViewModel @Inject constructor(
             try {
                 _isDeleting.value = true
 
-                // 一次查询拿到该专栏所有动态及其 serviceId，替代原先两步查询
                 val details = dynamicInfoDetailDao.getDetailsByArticleId(articleId)
 
-                // 专栏下无动态时，直接清理文章级记录
                 if (details.isEmpty()) {
                     dynamicIdsDao.deleteByArticleId(articleId)
                     taskDao.deleteByArticleId(articleId)
@@ -285,7 +249,6 @@ class ArticleViewModel @Inject constructor(
                     return@launch
                 }
 
-                // 逐条尝试远端删除，分类记录成功与失败
                 val successfulDynamicIds = mutableListOf<Long>()
                 var errorCount = 0
 
@@ -293,7 +256,6 @@ class ArticleViewModel @Inject constructor(
                     val serviceId = detail.serviceId
 
                     if (serviceId == null) {
-                        // 视图中 serviceId 为 null：user_dynamic 中无对应记录，视为失败
                         errorCount++
                         kotlinx.coroutines.delay(300)
                         continue
@@ -306,31 +268,26 @@ class ArticleViewModel @Inject constructor(
                     )
 
                     if (result is FetchResult.Success) {
-                        // 远端删除成功：同步删除本地 user_dynamic 记录
                         userDynamicDao.deleteByServiceId(serviceId)
                         successfulDynamicIds.add(detail.dynamicId)
                     } else {
-                        // 远端删除失败：保留本地数据，仅计入错误
                         errorCount++
                     }
 
                     kotlinx.coroutines.delay(300)
                 }
 
-                // 批量清理远端删除成功的动态的本地明细记录
                 if (successfulDynamicIds.isNotEmpty()) {
                     actionDao.deleteByDynamicIds(successfulDynamicIds)
                     officialInfoDao.deleteByDynamicIds(successfulDynamicIds)
                     dynamicInfoDao.deleteByIds(successfulDynamicIds)
                 }
 
-                // 有任意删除失败：Toast 提示错误数量，保留专栏卡片与失败条目
                 if (errorCount > 0) {
                     _toastMessage.emit("删除错误 $errorCount 条")
                     return@launch
                 }
 
-                // 全部删除成功：清理文章级记录，触发 UI 返回/关闭
                 dynamicIdsDao.deleteByArticleId(articleId)
                 taskDao.deleteByArticleId(articleId)
                 articleDao.deleteByArticleId(articleId)

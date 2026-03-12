@@ -26,25 +26,16 @@ class TaskNotificationManager @Inject constructor(
         const val NOTIFICATION_ID = 1001
     }
 
-    // ── WakeLock：确保 CPU 在熄屏时不进入深度睡眠 ──────────────────────────────
-    // 在前台服务存活期间持有，任务结束或异常时释放。
-    // WorkManager 内部已有 PartialWakeLock，这里额外持有是为了应对部分国产 ROM
-    // 绕过 WorkManager 直接杀死进程的极端情况。
     private val wakeLock: PowerManager.WakeLock by lazy {
         (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
             .newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "LotteryTool::TaskWakeLock"
             ).apply {
-                // 设置超时上限（2 小时），防止因任务异常未释放导致持续耗电
                 setReferenceCounted(false)
             }
     }
 
-    /**
-     * 获取初始的 ForegroundInfo，同时持有 WakeLock。
-     * 在 [ExtractDynamicWorker.doWork] 开头调用。
-     */
     fun getForegroundInfo(articleId: Long): ForegroundInfo {
         acquireWakeLock()
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -58,27 +49,25 @@ class TaskNotificationManager @Inject constructor(
         }
     }
 
-    /**
-     * 动态更新进度通知。
-     */
     fun updateProgress(articleId: Long, current: Int, total: Int) {
         val notification = buildNotification(articleId, current, total)
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
     /**
-     * 显示错误通知，并释放 WakeLock（任务已终止，不再需要保持 CPU 唤醒）。
+     * 进入同步阶段时调用：隐藏进度条，显示"正在同步个人动态..."文字。
      */
+    fun updateSyncing(articleId: Long) {
+        val notification = buildNotification(articleId, isSyncing = true)
+        notificationManager.notify(NOTIFICATION_ID, notification)
+    }
+
     fun updateError(articleId: Long, errorMessage: String) {
         val notification = buildNotification(articleId, isError = true, errorMsg = errorMessage)
         notificationManager.notify(NOTIFICATION_ID, notification)
         releaseWakeLock()
     }
 
-    /**
-     * 任务正常完成时调用，释放 WakeLock。
-     * 在 [ExtractDynamicWorker.doWork] 返回 [Result.success()] 前调用。
-     */
     fun onTaskComplete() {
         releaseWakeLock()
     }
@@ -87,7 +76,6 @@ class TaskNotificationManager @Inject constructor(
 
     private fun acquireWakeLock() {
         if (!wakeLock.isHeld) {
-            // 超时 2 小时，防止永久持锁
             wakeLock.acquire(2 * 60 * 60 * 1000L)
         }
     }
@@ -105,15 +93,22 @@ class TaskNotificationManager @Inject constructor(
         current: Int = 0,
         total: Int = 0,
         isError: Boolean = false,
-        errorMsg: String? = null
+        errorMsg: String? = null,
+        isSyncing: Boolean = false
     ): Notification {
         createNotificationChannel()
 
-        val title = if (isError) "文章 $articleId 处理出错" else "正在处理文章: $articleId"
+        val title = when {
+            isError    -> "文章 $articleId 处理出错"
+            isSyncing  -> "文章 $articleId 正在同步"
+            else       -> "正在处理文章: $articleId"
+        }
+
         val contentText = when {
-            isError -> errorMsg ?: "未知错误"
+            isError   -> errorMsg ?: "未知错误"
+            isSyncing -> "正在同步个人动态..."
             total > 0 -> "进度: $current / $total"
-            else -> "准备中..."
+            else      -> "准备中..."
         }
 
         return NotificationCompat.Builder(context, CHANNEL_ID)
@@ -123,21 +118,27 @@ class TaskNotificationManager @Inject constructor(
                 if (isError) android.R.drawable.stat_notify_error
                 else R.mipmap.ic_launcher
             )
-            // ongoing=true 时系统会尽力维持前台服务不被杀死
             .setOngoing(!isError)
             .setAutoCancel(isError)
             .setProgress(
-                if (isError) 0 else total,
-                if (isError) 0 else current,
-                !isError && total == 0   // indeterminate（不定进度条）
+                when {
+                    isError   -> 0
+                    isSyncing -> 0      // 同步阶段：max=0 且 indeterminate=false → 不显示进度条
+                    else      -> total
+                },
+                when {
+                    isError   -> 0
+                    isSyncing -> 0
+                    else      -> current
+                },
+                // indeterminate：只在"准备中"（total==0 且非同步阶段）时显示转圈
+                !isError && !isSyncing && total == 0
             )
-            // 出错用 HIGH，正常进度用 DEFAULT（不要用 LOW，国产 ROM 会降低前台服务优先级）
             .setPriority(
                 if (isError) NotificationCompat.PRIORITY_HIGH
                 else NotificationCompat.PRIORITY_DEFAULT
             )
             .setSilent(!isError)
-            // 防止国产 ROM 将通知折叠/压缩进"后台应用"组而失去 ongoing 效果
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
     }
@@ -150,11 +151,9 @@ class TaskNotificationManager @Inject constructor(
                 val channel = NotificationChannel(
                     CHANNEL_ID,
                     "后台任务状态",
-                    // 必须用 IMPORTANCE_DEFAULT 或以上，国产 ROM 才不会把前台服务折叠压制
                     NotificationManager.IMPORTANCE_DEFAULT
                 ).apply {
                     description = "用于显示抽奖助手后台任务的运行进度"
-                    // 普通进度条通知不需要震动，只有出错时才响
                     enableVibration(false)
                     setSound(null, null)
                 }

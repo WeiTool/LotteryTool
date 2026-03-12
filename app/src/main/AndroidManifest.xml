@@ -3,18 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
         tools:ignore="ForegroundServicesPolicy" />
-
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-
-    <!--
-        WAKE_LOCK：持有 CPU 唤醒锁，确保熄屏 / 按 Home 后协程仍能继续执行。
-        WorkManager 内部虽会自动申请，但显式声明可防止部分国产 ROM 拦截。
-    -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application

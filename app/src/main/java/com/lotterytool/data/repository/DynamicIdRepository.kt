@@ -24,21 +24,26 @@ class DynamicIdRepository @Inject constructor(
 
             when (response.code) {
                 0 -> {
-                    // 1. 解析网络返回的新 ID 并去重
                     val entitiesToInsert = mutableListOf<DynamicIdEntity>()
 
-                    response.data?.opus?.content?.paragraphs?.forEach { paraText ->
-                        paraText.text.nodes.forEach { node ->
+                    // 每一层都用 ?: 或 orEmpty() 做空安全，
+                    // 任何一层字段缺失只跳过当前元素，不抛异常、不中断整个遍历
+                    response.data?.opus?.content?.paragraphs.orEmpty().forEach { paraText ->
+
+                        // text / nodes 均已声明为可空，用 orEmpty() 安全降级为空列表
+                        paraText.text?.nodes.orEmpty().forEach { node ->
+
                             if (node.nodeType == 4) {
-                                val url = node.link.link
+                                // link?.link 双重空安全；为空则跳过本节点
+                                val url = node.link?.link ?: return@forEach
 
                                 // 匹配普通动态 ID
                                 DYNAMIC_REGEX_LEGACY.find(url)?.groupValues?.getOrNull(1)
                                     ?.toLongOrNull()?.let { id ->
                                         entitiesToInsert.add(
                                             DynamicIdEntity(
-                                                articleId,
-                                                id,
+                                                articleId = articleId,
+                                                dynamicId = id,
                                                 isSpecial = false
                                             )
                                         )
@@ -49,8 +54,8 @@ class DynamicIdRepository @Inject constructor(
                                     ?.toLongOrNull()?.let { id ->
                                         entitiesToInsert.add(
                                             DynamicIdEntity(
-                                                articleId,
-                                                id,
+                                                articleId = articleId,
+                                                dynamicId = id,
                                                 isSpecial = true
                                             )
                                         )
@@ -59,15 +64,11 @@ class DynamicIdRepository @Inject constructor(
                         }
                     }
 
-                    // 【性能优化】早期退出：如果本次解析没有新 ID，直接返回成功
-                    // 避免不必要的数据库读取
                     if (entitiesToInsert.isEmpty()) {
                         return FetchResult.Success()
                     }
 
                     dynamicIdsDao.insertIds(entitiesToInsert)
-
-                    // 即使没有变化也返回成功，因为任务本身执行成功了
                     FetchResult.Success()
                 }
 

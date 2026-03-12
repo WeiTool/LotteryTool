@@ -112,7 +112,7 @@ fun ArticleScreen(
     // 同步数据：执行中 / 结果 Dialog 状态
     var showSyncDialog by remember { mutableStateOf(false) }
 
-    var pageSizeInput by remember { mutableStateOf("1") }
+    var pageSizeInput by remember { mutableStateOf("50") }
     val context = LocalContext.current
 
     // 收集 Toast 消息（deleteArticleFull 成功/失败 + loadServiceId 繁忙提示均走此通道）
@@ -240,9 +240,12 @@ fun ArticleScreen(
                             onClick = { id -> onCardClick(id) },
                             onExtractClick = {
                                 viewModel.startExtractionTask(
-                                    article.articleId,
-                                    userMid,
-                                    isBusy
+                                    articleId = article.articleId,
+                                    userMid = userMid,
+                                    isBusy = isBusy,
+                                    // 已处理过的专栏点"重试"→强制全量重新抓取
+                                    // 首次点"处理"→保持跳过已有数据的默认行为
+                                    forceRefresh = iconState.isProcessed
                                 )
                             },
                             onDeleteClick = {
@@ -927,7 +930,8 @@ fun ArticleItem(
                                     strokeWidth = 2.dp
                                 )
                             } else {
-                                Text("处理", fontSize = 12.sp)
+                                val buttonText = if (isProcessed) "重试" else "处理"
+                                Text(buttonText, fontSize = 12.sp)
                             }
                         }
                         if (isProcessed) {
