@@ -161,10 +161,11 @@ fun UserScreen(onCardClick: (Long) -> Unit, viewModel: UserViewModel) {
         ) {
             // 时间戳按钮（在上方）
             TimeStampFab(
-                modifier = Modifier,
                 onClick = {
-                    // 先加载数据，加载完成后打开日历
-                    viewModel.loadTime { showCalendarDialog = true }
+                    // 1. 立即改变 UI 状态
+                    showCalendarDialog = true
+                    // 2. 异步去刷一下数据库，确保弹窗里看到的是最新的
+                    viewModel.refreshLocalTimestamp()
                 }
             )
 

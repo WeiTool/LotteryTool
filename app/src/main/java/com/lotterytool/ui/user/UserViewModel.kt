@@ -23,6 +23,7 @@ import java.util.Calendar
 import javax.inject.Inject
 import androidx.core.content.edit
 import com.lotterytool.data.room.saveTime.SaveTimeDao
+import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.cancellation.CancellationException
 
 @HiltViewModel
@@ -60,6 +61,7 @@ class UserViewModel @Inject constructor(
 
     init {
         checkAndAutoRefresh()
+        refreshLocalTimestamp()
     }
 
     private fun checkAndAutoRefresh() {
@@ -229,22 +231,20 @@ class UserViewModel @Inject constructor(
         loginJob?.cancel()
     }
 
-    fun loadTime(onLoaded: () -> Unit) {
-        viewModelScope.launch {
-            // 从数据库获取
+    // 明确指定在 IO 线程执行数据库操作
+    fun refreshLocalTimestamp() {
+        viewModelScope.launch(Dispatchers.IO) {
             val savedTime = saveTimeDao.getLatestSaveTime() ?: 0
             _currentTimeStamp.value = savedTime
-            // 数据准备好后，执行回调打开 Dialog
-            onLoaded()
         }
     }
 
     fun updateTime(newTimestamp: Int) {
-        viewModelScope.launch {
-            // 更新本地 State 流，UI 会自动响应
-            _currentTimeStamp.value = newTimestamp
-            // 保存到数据库 (注意：SaveTimeEntity 的 id 必须为 1 才能触发 REPLACE)
+        viewModelScope.launch(Dispatchers.IO) {
+            // 更新数据库
             saveTimeDao.updateSaveTime(com.lotterytool.data.room.saveTime.SaveTimeEntity(id = 1, saveTime = newTimestamp))
+            // 同步更新 StateFlow，让 UI 响应
+            _currentTimeStamp.value = newTimestamp
         }
     }
 }
