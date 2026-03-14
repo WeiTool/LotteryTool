@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -50,6 +51,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,7 +68,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -114,6 +115,16 @@ fun ArticleScreen(
 
     var pageSizeInput by remember { mutableStateOf("50") }
     val context = LocalContext.current
+
+    val listState = rememberLazyListState()
+
+    // 如果有新专栏，就跳到最上方
+    LaunchedEffect(articles.size) {
+        if (articles.isNotEmpty()) {
+            // 使用动画平滑滚动到第 0 个条目
+            listState.animateScrollToItem(0)
+        }
+    }
 
     // 收集 Toast 消息（deleteArticleFull 成功/失败 + loadServiceId 繁忙提示均走此通道）
     LaunchedEffect(Unit) {
@@ -226,14 +237,21 @@ fun ArticleScreen(
             }
 
             else -> {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(state = listState,modifier = Modifier.fillMaxSize()) {
                     items(
                         count = articles.size,
-                        key = { index -> articles[index].articleId }
+                        key = { index -> articles[index].articleId },
+                        contentType = { "article" }
                     ) { index ->
                         val article = articles[index]
-                        val isRunning = workStates[article.articleId] ?: false
-                        val iconState = articleStates[article.articleId] ?: ArticleIconState()
+                        // 使用 derivedStateOf 隔离每个 item 的状态读取，
+                        // 防止任意一条记录状态变化导致整列重组
+                        val isRunning by remember(article.articleId) {
+                            derivedStateOf { workStates[article.articleId] ?: false }
+                        }
+                        val iconState by remember(article.articleId) {
+                            derivedStateOf { articleStates[article.articleId] ?: ArticleIconState() }
+                        }
 
                         ArticleItem(
                             article = article,
@@ -979,64 +997,4 @@ private fun StatusIcon(imageVector: ImageVector, color: Color) {
         tint = color,
         modifier = Modifier.size(14.dp)
     )
-}
-
-
-@Preview(showBackground = true, name = "全状态激活卡片预览")
-@Composable
-fun ArticleItemFullStatusPreview() {
-    // 模拟一个文章实体数据
-    val mockArticle = ArticleEntity(
-        articleId = 123456789L,
-        mid = 0,
-        publishTime = 0,
-        lastUpdated = 0,
-    )
-
-    // 使用项目主题包裹，确保颜色显示正确
-    MaterialTheme {
-        ArticleItem(
-            article = mockArticle,
-            onClick = {},
-            onExtractClick = {},
-            onDeleteClick = {},
-            isGlobalBusy = false,    // 全局不繁忙，使按钮可用
-            isRunning = false,       // 不在加载中，显示“处理”文字
-            isProcessed = true,      // 状态：已执行 (显示绿色打勾)
-            // --- 状态图标组全部设为 true ---
-            hasError = true,           // 红色：有出错 (Error)
-            hasEmptyCount = true,      // 蓝色：有空项 (Info)
-            hasExpired = true,         // 黄色：有开奖 (Warning)
-            hasActionError = true,     // 粉色：抽奖动作问题 (CloudOff)
-            hasOfficialMissing = true  // 紫色：官方信息缺失 (RunningWithErrors)
-        )
-    }
-}
-
-@Preview(showBackground = true, name = "正在处理中状态")
-@Composable
-fun ArticleItemProcessingPreview() {
-    val mockArticle = ArticleEntity(
-        articleId = 123456789L,
-        mid = 0,
-        publishTime = 0,
-        lastUpdated = 0,
-    )
-
-    MaterialTheme {
-        ArticleItem(
-            article = mockArticle,
-            onClick = {},
-            onExtractClick = {},
-            onDeleteClick = {},
-            isGlobalBusy = true,    // 全局繁忙
-            isRunning = true,       // 正在运行 (显示转圈)
-            isProcessed = false,
-            hasError = false,
-            hasEmptyCount = false,
-            hasExpired = false,
-            hasActionError = false,
-            hasOfficialMissing = false
-        )
-    }
 }

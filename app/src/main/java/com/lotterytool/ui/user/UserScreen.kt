@@ -2,7 +2,6 @@ package com.lotterytool.ui.user
 
 import android.content.Context
 import android.content.Intent
-import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -28,22 +27,31 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,10 +79,28 @@ fun UserScreen(onCardClick: (Long) -> Unit, viewModel: UserViewModel) {
     val userList by viewModel.users.collectAsState(initial = emptyList())
     val userErrors by viewModel.userErrors.collectAsState()
     val qrState by viewModel.qrState.collectAsState()
+    val currentTimeStamp by viewModel.currentTimeStamp.collectAsState()
+
+    // 控制时间戳弹窗
+    var showTimeDialog by remember { mutableStateOf(false) }
+
+    // 控制日历弹窗
+    var showCalendarDialog by remember { mutableStateOf(false) }
 
     // 弹出 LoginDialog 就重置状态
     if (qrState !is QRState.Idle) {
         LoginDialog(qrState = qrState, onDismiss = { viewModel.resetQRState() })
+    }
+
+    // 时间戳弹窗
+    if (showCalendarDialog) {
+        TimeCalendarDialog(
+            initialTimestamp = currentTimeStamp,
+            onDismiss = { showCalendarDialog = false },
+            onConfirm = { newTime ->
+                viewModel.updateTime(newTime)
+            }
+        )
     }
 
     // 使用 Box 作为根布局，以便在右下角放置浮动按钮
@@ -127,12 +153,27 @@ fun UserScreen(onCardClick: (Long) -> Unit, viewModel: UserViewModel) {
             }
         }
 
-        // --- 右下角正方形圆角按钮 ---
-        WebAndChuckerFab(
-            modifier = Modifier.align(Alignment.BottomEnd)
-        )
+        // --- 右下角按钮组（从下到上：Link → 时间戳） ---
+        Column(
+            modifier = Modifier.align(Alignment.BottomEnd),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            // 时间戳按钮（在上方）
+            TimeStampFab(
+                modifier = Modifier,
+                onClick = {
+                    // 先加载数据，加载完成后打开日历
+                    viewModel.loadTime { showCalendarDialog = true }
+                }
+            )
+
+            // 原有 Web 链接按钮（在下方）
+            WebAndChuckerFab()
+        }
     }
 }
+
 @Composable
 fun UserCard(
     user: UserEntity,
@@ -304,11 +345,15 @@ fun AddUserCard(onClick: () -> Unit, modifier: Modifier = Modifier) {
 fun LoginDialog(qrState: QRState, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             shape = RoundedCornerShape(16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp).fillMaxWidth(),
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -318,8 +363,12 @@ fun LoginDialog(qrState: QRState, onDismiss: () -> Unit) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Text("正在生成二维码...", style = MaterialTheme.typography.bodyMedium)
                     }
+
                     is QRState.Success -> {
-                        Text("请使用 哔哩哔哩 App 扫码", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "请使用 哔哩哔哩 App 扫码",
+                            style = MaterialTheme.typography.titleMedium
+                        )
                         Text(
                             text = "有效时间 3 分钟",
                             style = MaterialTheme.typography.labelLarge,
@@ -335,11 +384,16 @@ fun LoginDialog(qrState: QRState, onDismiss: () -> Unit) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Text("可以截图和使用其他设备", style = MaterialTheme.typography.bodyMedium)
                     }
+
                     is QRState.Verifying -> {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text("扫码成功，正在拉取数据...", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "扫码成功，正在拉取数据...",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
+
                     is QRState.Error -> {
                         Icon(
                             imageVector = Icons.Default.Warning,
@@ -348,8 +402,16 @@ fun LoginDialog(qrState: QRState, onDismiss: () -> Unit) {
                             modifier = Modifier.size(48.dp)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("出错啦", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
-                        Text(text = qrState.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "出错啦",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Text(
+                            text = qrState.message,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = onDismiss,
@@ -373,9 +435,8 @@ fun WebAndChuckerFab(
     context: Context = LocalContext.current
 ) {
     val url = "https://gitee.com/weitool/lottery-tool/releases"
-    val view = LocalView.current
+    LocalView.current
 
-    // 使用 Surface 代替原生的 FloatingActionButton
     Surface(
         modifier = modifier
             .padding(24.dp)
@@ -405,9 +466,109 @@ fun WebAndChuckerFab(
         ) {
             Icon(
                 imageVector = Icons.Default.Link,
-                contentDescription = "点击打开网页，长按调试",
+                contentDescription = "点击打开网页",
                 tint = MaterialTheme.colorScheme.onPrimary
             )
+        }
+    }
+}
+
+@Composable
+fun TimeStampFab(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier
+            .padding(start = 24.dp, end = 24.dp, top = 0.dp, bottom = 0.dp)
+            .size(56.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primary,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable { onClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Schedule,
+                contentDescription = "查看当前时间戳",
+                tint = MaterialTheme.colorScheme.onPrimary
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimeCalendarDialog(
+    initialTimestamp: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = if (initialTimestamp > 0) initialTimestamp.toLong() * 1000L else System.currentTimeMillis()
+    )
+
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            DatePicker(
+                state = datePickerState,
+                title = null,
+                headline = null,
+                showModeToggle = false
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 文字放在左边，并占据剩余空间
+                Text(
+                    text = "用于确定当前时间\n防止获取旧专栏",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // 按钮组保持在右侧
+                TextButton(onClick = onDismiss) {
+                    Text("取消")
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Button(
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let { onConfirm((it / 1000).toInt()) }
+                        onDismiss()
+                    },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF7D521A) // 匹配你截图中的深土黄色
+                    )
+                ) {
+                    Text("确认修改")
+                }
+            }
         }
     }
 }

@@ -5,9 +5,11 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.lotterytool.data.repository.DynamicIdRepository
 import com.lotterytool.data.repository.DynamicInfoRepository
 import com.lotterytool.data.repository.UserDynamicRepository
+import com.lotterytool.data.room.article.ArticleDeleteDao
 import com.lotterytool.data.room.task.TaskDao
 import com.lotterytool.data.room.task.TaskEntity
 import com.lotterytool.data.room.task.TaskState
@@ -29,7 +31,8 @@ class ExtractDynamicWorker @AssistedInject constructor(
     private val dynamicAction: DynamicAction,
     private val userDao: UserDao,
     private val notificationManager: TaskNotificationManager,
-    private val userDynamicRepository: UserDynamicRepository
+    private val userDynamicRepository: UserDynamicRepository,
+    private val articleDeleteDao: ArticleDeleteDao
 ) : CoroutineWorker(context, params) {
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
@@ -81,6 +84,13 @@ class ExtractDynamicWorker @AssistedInject constructor(
                             notificationManager.updateProgress(articleId, current, total)
                         }
                     )
+
+                    val successfulIds = infoRepository.getSuccessfulDynamicIds(articleId)
+                    if (successfulIds.isEmpty()){
+                        articleDeleteDao.deleteArticleFully(articleId)
+                        notificationManager.onTaskComplete()
+                        return Result.success(workDataOf("IS_CLEANED" to true))
+                    }
 
                     // 阶段三：Action 阶段
                     taskDao.updateProgress(articleId, 0, 0)

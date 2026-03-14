@@ -15,6 +15,9 @@ interface DynamicIdsDao {
     @Query("SELECT * FROM dynamic_ids WHERE articleId = :articleId")
     suspend fun getIdsByArticleId(articleId: Long): List<DynamicIdEntity>
 
+    @Query("SELECT dynamicId FROM dynamic_ids")
+    suspend fun getAllExistingIds(): List<Long>
+
     @Query("DELETE FROM dynamic_ids WHERE articleId = :articleId")
     suspend fun deleteByArticleId(articleId: Long)
 }

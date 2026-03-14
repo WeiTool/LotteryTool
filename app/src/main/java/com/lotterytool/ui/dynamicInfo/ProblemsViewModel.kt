@@ -24,19 +24,13 @@ class ProblemsViewModel @Inject constructor(
 
     private val articleId: Long = savedStateHandle.get<Long>("articleId") ?: -1L
 
-    /**
-     * 当前页面的 type，由导航参数传入。
-     * 用于在分区时跳过不适用于本 type 的条件，确保各 Tab 的问题卡片完全隔离。
-     */
+    // 当前页面的 type，由导航参数传入。用于在分区时跳过不适用于本 type 的条件，确保各 Tab 的问题卡片完全隔离。
     private val type: Int = savedStateHandle.get<Int>("type") ?: 0
 
-    /** 仅包含本 type 的动态，不跨 type 污染 */
+    // 仅包含本 type 的动态，不跨 type 污染
     private val allDynamics = dynamicInfoDao.getInfoByArticleAndType(articleId, type)
 
-    /**
-     * 每 60 秒 tick 一次，驱动过期检查的实时刷新。
-     * 启动时立刻发射第一个值，确保 UI 不等待。
-     */
+    // 每 60 秒 tick 一次，驱动过期检查的实时刷新。启动时立刻发射第一个值，确保 UI 不等待。
     private val refreshTicker = flow {
         while (currentCoroutineContext().isActive) {
             // 发射当前系统时间（秒），确保类型是 Long
@@ -44,6 +38,7 @@ class ProblemsViewModel @Inject constructor(
             delay(60_000L)
         }
     }
+
 
     /**
      * 将所有动态划分为 4 类问题。

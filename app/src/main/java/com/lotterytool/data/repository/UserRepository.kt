@@ -1,6 +1,7 @@
 package com.lotterytool.data.repository
 
 import com.lotterytool.data.api.ApiServices
+import com.lotterytool.data.room.saveTime.SaveTimeDao
 import com.lotterytool.data.room.user.UserDao
 import com.lotterytool.data.room.user.UserEntity
 import com.lotterytool.utils.FetchResult
@@ -10,7 +11,8 @@ import javax.inject.Inject
 
 class UserRepository @Inject constructor(
     private val apiService: ApiServices,
-    private val userDao: UserDao
+    private val userDao: UserDao,
+    private val saveTimeDao: SaveTimeDao
 ) {
     suspend fun refreshAllUsers(): FetchResult<Unit> {
         return try {
@@ -101,4 +103,6 @@ class UserRepository @Inject constructor(
 
     // 提供给viewmodel
     val allUsers: Flow<List<UserEntity>> = userDao.getAllUsersFlow()
+
+    suspend fun getLatestSaveTime() = saveTimeDao.getLatestSaveTime()
 }

@@ -21,10 +21,6 @@ interface DynamicInfoDao {
     @Query("SELECT * FROM dynamic_info_detail WHERE articleId = :articleId AND type = :type ORDER BY timestamp DESC")
     fun getInfoByArticleAndType(articleId: Long, type: Int): Flow<List<DynamicInfoDetail>>
 
-    // 删除某个id（用于删除某个卡片）
-    @Query("DELETE FROM dynamic_info WHERE dynamicId = :dynamicId")
-    suspend fun deleteById(dynamicId: Long)
-
     // 获取没有错误的动态
     @Query("SELECT dynamicId FROM dynamic_info WHERE articleId = :articleId AND (errorMessage IS NULL OR errorMessage = '')")
     suspend fun getSuccessfulDynamicIds(articleId: Long): List<Long>

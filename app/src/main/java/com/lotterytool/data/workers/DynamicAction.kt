@@ -1,12 +1,12 @@
 package com.lotterytool.data.workers
 
+import com.lotterytool.data.repository.DynamicInfoRepository
 import com.lotterytool.data.repository.actionRepository.FollowRepository
 import com.lotterytool.data.repository.actionRepository.LikeRepository
 import com.lotterytool.data.repository.actionRepository.ReplyRepository
 import com.lotterytool.data.repository.actionRepository.RepostRepository
 import com.lotterytool.data.room.action.ActionDao
 import com.lotterytool.data.room.action.ActionEntity
-import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.utils.FetchResult
 import com.lotterytool.utils.ReplyMessage
 import com.lotterytool.utils.RepostContent
@@ -20,7 +20,7 @@ import javax.inject.Inject
 import kotlin.random.Random
 
 class DynamicAction @Inject constructor(
-    private val dynamicInfoDao: DynamicInfoDao,
+    private val dynamicInfoRepository: DynamicInfoRepository,
     private val actionDao: ActionDao,
     private val followRepository: FollowRepository,
     private val likeRepository: LikeRepository,
@@ -40,7 +40,7 @@ class DynamicAction @Inject constructor(
         forceRefresh: Boolean = false,
         onProgress: suspend (current: Int, total: Int) -> Unit
     ) {
-        val successfulIds = dynamicInfoDao.getSuccessfulDynamicIds(articleId)
+        val successfulIds = dynamicInfoRepository.getSuccessfulDynamicIds(articleId)
         val total = successfulIds.size
 
         if (total == 0) {
@@ -96,7 +96,7 @@ class DynamicAction @Inject constructor(
         message: String
     ): FetchResult<Unit> = withContext(NonCancellable) {
         return@withContext try {
-            val info = dynamicInfoDao.getInfoById(dynamicId)
+            val info = dynamicInfoRepository.getInfoById(dynamicId)
                 ?: return@withContext FetchResult.Error("未找到动态详情")
 
             val existingAction = actionDao.getActionById(dynamicId)

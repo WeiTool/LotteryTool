@@ -22,13 +22,15 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Calendar
 import javax.inject.Inject
 import androidx.core.content.edit
+import com.lotterytool.data.room.saveTime.SaveTimeDao
 import kotlin.coroutines.cancellation.CancellationException
 
 @HiltViewModel
 class UserViewModel @Inject constructor(
     private val qrRepository: QRRepository,
     private val userRepository: UserRepository,
-    private val prefs: SharedPreferences
+    private val prefs: SharedPreferences,
+    private val saveTimeDao: SaveTimeDao
 ) : ViewModel() {
 
     // 接收错误信息
@@ -42,6 +44,9 @@ class UserViewModel @Inject constructor(
     // 控制按钮情况
     private val _qrState = MutableStateFlow<QRState>(QRState.Idle)
     val qrState = _qrState.asStateFlow()
+
+    private val _currentTimeStamp = MutableStateFlow(0) // 默认值
+    val currentTimeStamp = _currentTimeStamp.asStateFlow()
 
     // 定义Job 变量
     private var loginJob: Job? = null
@@ -222,5 +227,24 @@ class UserViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         loginJob?.cancel()
+    }
+
+    fun loadTime(onLoaded: () -> Unit) {
+        viewModelScope.launch {
+            // 从数据库获取
+            val savedTime = saveTimeDao.getLatestSaveTime() ?: 0
+            _currentTimeStamp.value = savedTime
+            // 数据准备好后，执行回调打开 Dialog
+            onLoaded()
+        }
+    }
+
+    fun updateTime(newTimestamp: Int) {
+        viewModelScope.launch {
+            // 更新本地 State 流，UI 会自动响应
+            _currentTimeStamp.value = newTimestamp
+            // 保存到数据库 (注意：SaveTimeEntity 的 id 必须为 1 才能触发 REPLACE)
+            saveTimeDao.updateSaveTime(com.lotterytool.data.room.saveTime.SaveTimeEntity(id = 1, saveTime = newTimestamp))
+        }
     }
 }

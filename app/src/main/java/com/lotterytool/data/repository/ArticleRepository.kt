@@ -3,6 +3,8 @@ package com.lotterytool.data.repository
 import com.lotterytool.data.api.ApiServices
 import com.lotterytool.data.room.article.ArticleDao
 import com.lotterytool.data.room.article.ArticleEntity
+import com.lotterytool.data.room.saveTime.SaveTimeDao
+import com.lotterytool.data.room.saveTime.SaveTimeEntity
 import com.lotterytool.data.room.user.UserDao
 import com.lotterytool.utils.FetchResult
 import com.lotterytool.utils.LotteryUser
@@ -12,7 +14,8 @@ import javax.inject.Inject
 class ArticleRepository @Inject constructor(
     private val apiServices: ApiServices,
     private val articleDao: ArticleDao,
-    private val userDao: UserDao
+    private val userDao: UserDao,
+    private val saveTimeDao: SaveTimeDao
 ) {
     suspend fun fetchArticles(cookie: String, mid: Long, ps: Int): FetchResult<Unit> {
         // 获取本地用户信息，用于 WBI 签名
@@ -41,12 +44,10 @@ class ArticleRepository @Inject constructor(
                     val articleList = response.data?.articles
                     if (articleList.isNullOrEmpty()) return FetchResult.Error("文章列表为空")
 
-                    // 获取数据库中目前已有的最早文章时间
-                    val maxTimeInDb = articleDao.getMaxPublishTime() ?: 0L
-
+                    val lastSavedCheckpoint = saveTimeDao.getLatestSaveTime() ?: 0
                     // 如果数据库非空，则过滤掉早于该时间的文章
-                    val filteredList = if (maxTimeInDb > 0) {
-                        articleList.filter { it.publishTime >= maxTimeInDb }
+                    val filteredList = if (lastSavedCheckpoint > 0) {
+                        articleList.filter { it.publishTime > lastSavedCheckpoint }
                     } else {
                         articleList
                     }
@@ -55,6 +56,9 @@ class ArticleRepository @Inject constructor(
                         // 如果过滤后全没了，说明这批文章都比库里的旧
                         return FetchResult.Success() // 或者返回特定的提示
                     }
+
+                    val newMaxTimestamp = filteredList.maxOf { it.publishTime }
+                    saveTimeDao.updateSaveTime(SaveTimeEntity(saveTime = newMaxTimestamp.toInt()))
 
                     // 将过滤后的数据转换为 Entity 并存库
                     val entities = filteredList.map { item ->

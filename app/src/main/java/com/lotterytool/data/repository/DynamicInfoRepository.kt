@@ -37,13 +37,23 @@ class DynamicInfoRepository @Inject constructor(
         onProgress: suspend (current: Int, total: Int) -> Unit
     ) {
         val allDynamicEntities = dynamicIdsDao.getIdsByArticleId(articleId)
-
         if (allDynamicEntities.isEmpty()) return
 
-        val total = allDynamicEntities.size
+        val existingIdSet = dynamicIdsDao.getAllExistingIds().toSet()
+
+        val filteredEntities = allDynamicEntities.filter { entity ->
+            !existingIdSet.contains(entity.dynamicId)
+        }
+
+        if (filteredEntities.isEmpty()) {
+            onProgress(allDynamicEntities.size, allDynamicEntities.size) // 直接完成
+            return
+        }
+
+        val total = filteredEntities.size
         var currentIndex = 0
 
-        for (entity in allDynamicEntities) {
+        for (entity in filteredEntities) {
             if (!currentCoroutineContext().isActive) break
 
             currentIndex++
@@ -185,12 +195,14 @@ class DynamicInfoRepository @Inject constructor(
         val keywords = listOf("抽", "开奖", "截止", "公布")
         if (keywords.none { text.contains(it) }) return null
 
-        val regex = "((\\d{4})[年./-])?(\\d{1,2})[月./-](\\d{1,2})[日号]?(\\s*(\\d{1,2})[:点时](\\d{2})?)?".toRegex()
+        val regex =
+            "((\\d{4})[年./-])?(\\d{1,2})[月./-](\\d{1,2})[日号]?(\\s*(\\d{1,2})[:点时](\\d{2})?)?".toRegex()
         val matchResult = regex.findAll(text).lastOrNull() ?: return null
         val groups = matchResult.groupValues
         val calendar = java.util.Calendar.getInstance()
 
-        val year = if (groups[2].isNotEmpty()) groups[2].toInt() else calendar.get(java.util.Calendar.YEAR)
+        val year =
+            if (groups[2].isNotEmpty()) groups[2].toInt() else calendar.get(java.util.Calendar.YEAR)
         val month = groups[3].toInt() - 1
         val day = groups[4].toInt()
         val hour = if (groups[6].isNotEmpty()) groups[6].toInt() else 0
@@ -213,4 +225,9 @@ class DynamicInfoRepository @Inject constructor(
     suspend fun deleteDynamicLocally(dynamicId: Long) {
         dynamicDeleteDao.deleteFullDynamicLocally(dynamicId)
     }
+
+    suspend fun getSuccessfulDynamicIds(articleId: Long) =
+        dynamicInfoDao.getSuccessfulDynamicIds(articleId)
+
+    suspend fun getInfoById(dynamicId: Long) = dynamicInfoDao.getInfoById(dynamicId)
 }

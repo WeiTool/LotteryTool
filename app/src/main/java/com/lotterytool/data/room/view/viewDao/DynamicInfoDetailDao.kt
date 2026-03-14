@@ -28,38 +28,42 @@ interface DynamicInfoDetailDao {
      */
     @Query("""
     SELECT
-        articleId,
-        MAX(CASE WHEN task_state = 'FAILED' OR error_message IS NOT NULL
-            THEN 1 ELSE 0 END) AS hasError,
+        a.articleId AS articleId,
+        MAX(CASE WHEN t.state = 'FAILED' OR t.errorMessage IS NOT NULL THEN 1 ELSE 0 END) AS hasError,
+
         MAX(CASE 
-            WHEN (official_time > 0 AND official_time < :currentTimeSeconds) OR
-                 (normalTime > 0 AND normalTime < :currentTimeSeconds) OR
-                 (specialTime > 0 AND specialTime < :currentTimeSeconds)
+            WHEN (d.official_time > 0 AND d.official_time < :currentTimeSeconds) OR
+                 (d.normalTime > 0 AND d.normalTime < :currentTimeSeconds) OR
+                 (d.specialTime > 0 AND d.specialTime < :currentTimeSeconds)
             THEN 1 ELSE 0 END) AS isExpired,
+
         MAX(CASE WHEN
-            (repostResult IS NOT NULL AND repostResult != '成功') OR
-            (likeResult   IS NOT NULL AND likeResult   != '成功') OR
-            (replyResult  IS NOT NULL AND replyResult  != '成功') OR
-            (followResult IS NOT NULL AND followResult != '成功'
-                AND followResult != '已经关注用户，无法重复关注')
+            (d.repostResult IS NOT NULL AND d.repostResult != '成功') OR
+            (d.likeResult   IS NOT NULL AND d.likeResult   != '成功') OR
+            (d.replyResult  IS NOT NULL AND d.replyResult  != '成功') OR
+            (d.followResult IS NOT NULL AND d.followResult != '成功'
+                AND d.followResult != '已经关注用户，无法重复关注')
             THEN 1 ELSE 0 END) AS hasActionError,
+
         CASE WHEN
-            MAX(CASE WHEN task_state IN ('ACTION_PHASE', 'SUCCESS') THEN 1 ELSE 0 END) = 1 AND (
-                SUM(CASE WHEN type = 0 THEN 1 ELSE 0 END) = 0 OR
-                SUM(CASE WHEN type = 1 THEN 1 ELSE 0 END) = 0 OR
-                SUM(CASE WHEN type = 2 THEN 1 ELSE 0 END) = 0
+            MAX(CASE WHEN t.state IN ('ACTION_PHASE', 'SUCCESS') THEN 1 ELSE 0 END) = 1 AND (
+                SUM(CASE WHEN d.type = 0 THEN 1 ELSE 0 END) = 0 OR
+                SUM(CASE WHEN d.type = 1 THEN 1 ELSE 0 END) = 0 OR
+                SUM(CASE WHEN d.type = 2 THEN 1 ELSE 0 END) = 0
             )
         THEN 1 ELSE 0 END AS hasMissingTypes,
-        MAX(CASE WHEN type = 0 AND (
-            (official_time IS NOT NULL AND official_is_error IS NULL) OR
-            (official_time IS NULL     AND official_is_error IS NOT NULL) OR
-            official_is_error = 1
-        ) THEN 1 ELSE 0 END) AS hasMissingOfficialTime,
         
-        MAX(CASE WHEN task_state = 'SUCCESS'
-            THEN 1 ELSE 0 END) AS isProcessed
-    FROM dynamic_info_detail
-    GROUP BY articleId
+        MAX(CASE WHEN d.type = 0 AND (
+            (d.official_time IS NOT NULL AND d.official_is_error IS NULL) OR
+            (d.official_time IS NULL     AND d.official_is_error IS NOT NULL) OR
+            d.official_is_error = 1
+        ) THEN 1 ELSE 0 END) AS hasMissingOfficialTime,
+        MAX(CASE WHEN t.state = 'SUCCESS' THEN 1 ELSE 0 END) AS isProcessed
+
+    FROM article AS a
+    LEFT JOIN tasks AS t ON a.articleId = t.articleId
+    LEFT JOIN dynamic_info_detail AS d ON a.articleId = d.articleId
+    GROUP BY a.articleId
 """)
     fun getArticleStatusRows(currentTimeSeconds: Long): Flow<List<ArticleStatusRow>>
 

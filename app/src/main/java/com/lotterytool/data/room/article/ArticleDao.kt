@@ -20,9 +20,6 @@ interface ArticleDao {
     @Query("SELECT * FROM article")
     suspend fun getAllArticles(): List<ArticleEntity>
 
-    // 获取存入数据库最早时间
-    @Query("SELECT MAX(publishTime) FROM article")
-    suspend fun getMaxPublishTime(): Long?
 
     // 删除专栏
     @Query("DELETE FROM article WHERE articleId = :articleId")

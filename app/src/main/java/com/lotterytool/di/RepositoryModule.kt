@@ -17,6 +17,7 @@ import com.lotterytool.data.room.dynamicID.DynamicIdsDao
 import com.lotterytool.data.room.dynamicInfo.DynamicDeleteDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
+import com.lotterytool.data.room.saveTime.SaveTimeDao
 import com.lotterytool.data.room.user.UserDao
 import com.lotterytool.data.room.userDynamic.UserDynamicDao
 import dagger.Module
@@ -39,9 +40,10 @@ object RepositoryModule {
     @Singleton
     fun provideUserRepository(
         apiService: ApiServices,
-        userDao: UserDao
+        userDao: UserDao,
+        saveTimeDao: SaveTimeDao
     ): UserRepository {
-        return UserRepository(apiService, userDao)
+        return UserRepository(apiService, userDao, saveTimeDao)
     }
 
     @Provides
@@ -49,9 +51,10 @@ object RepositoryModule {
     fun provideArticleRepository(
         apiServices: ApiServices,
         articleDao: ArticleDao,
-        userDao: UserDao
+        userDao: UserDao,
+        saveTimeDao: SaveTimeDao
     ): ArticleRepository {
-        return ArticleRepository(apiServices, articleDao, userDao)
+        return ArticleRepository(apiServices, articleDao, userDao , saveTimeDao)
     }
 
     @Provides

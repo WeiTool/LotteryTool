@@ -1,3 +1,5 @@
+@file:OptIn(FlowPreview::class)
+
 package com.lotterytool.ui.article
 
 import androidx.lifecycle.SavedStateHandle
@@ -22,6 +24,7 @@ import com.lotterytool.data.room.view.viewDao.DynamicInfoDetailDao
 import com.lotterytool.data.workers.ExtractDynamicWorker
 import com.lotterytool.utils.FetchResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -175,8 +178,9 @@ class ArticleViewModel @Inject constructor(
                         .build()
                 }
 
+                val uniqueName = "AUTO_PROCESS_CHAIN"
                 var chain = workManager.beginUniqueWork(
-                    "AUTO_PROCESS_CHAIN",
+                    uniqueName,
                     ExistingWorkPolicy.REPLACE,
                     workRequests.first()
                 )
@@ -184,6 +188,25 @@ class ArticleViewModel @Inject constructor(
                     chain = chain.then(request)
                 }
                 chain.enqueue()
+
+                workManager.getWorkInfosForUniqueWorkFlow(uniqueName).collect { workInfos ->
+                    val allFinished = workInfos.all { it.state.isFinished }
+
+                    if (allFinished && workInfos.isNotEmpty()) {
+                        // 统计 OutputData 中包含 IS_CLEANED 为 true 的数量
+                        val cleanedCount = workInfos.count {
+                            it.outputData.getBoolean("IS_CLEANED", false)
+                        }
+
+                        if (cleanedCount > 0) {
+                            _toastMessage.emit("批量处理完成，共自动清理 $cleanedCount 个空专栏")
+                        } else {
+                            _toastMessage.emit("批量处理任务已完成")
+                        }
+                        // 统计完后可以退出 collect，避免重复触发
+                        return@collect
+                    }
+                }
 
             } catch (e: Exception) {
                 _toastMessage.emit("启动自动处理失败: ${e.localizedMessage}")

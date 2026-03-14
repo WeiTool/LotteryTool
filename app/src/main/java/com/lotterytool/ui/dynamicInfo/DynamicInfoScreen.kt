@@ -19,19 +19,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RunningWithErrors
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -42,6 +43,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -59,11 +63,11 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lotterytool.data.room.officialInfo.OfficialInfoEntity
@@ -73,71 +77,138 @@ import com.lotterytool.utils.formatPublishTime
 @Composable
 fun DynamicInfoScreen(
     viewModel: DynamicInfoViewModel = hiltViewModel(),
-    problemsViewModel: ProblemsViewModel = hiltViewModel()
+    problemsViewModel: ProblemsViewModel = hiltViewModel(),
+    searchViewModel: SearchViewModel = hiltViewModel(),
 ) {
     // 动态列表 & 官方详情
     val items by viewModel.dynamicList.collectAsStateWithLifecycle()
     val officialDetail by viewModel.officialDetail.collectAsStateWithLifecycle()
 
-    val problemGroups by problemsViewModel.problemGroups.collectAsStateWithLifecycle()
+    // 获取原始数据和搜索词
+    val rawGroups by problemsViewModel.problemGroups.collectAsStateWithLifecycle()
+    val searchQuery by searchViewModel.searchQuery.collectAsStateWithLifecycle()
 
-    // 主列表仅显示不在任何问题分组中的动态
-    val filteredItems by remember(items, problemGroups.problemDynamicIds) {
-        derivedStateOf {
-            items.filter { it.dynamicId !in problemGroups.problemDynamicIds }
+    // 1. 根据搜索词，实时过滤出【异常分组】的结果
+    val filteredGroups = remember(rawGroups, searchQuery) {
+        if (searchQuery.isBlank()) {
+            rawGroups
+        } else {
+            rawGroups.copy(
+                parseErrors = rawGroups.parseErrors.filter { it.articleId.toString().contains(searchQuery) },
+                missingOfficialItems = rawGroups.missingOfficialItems.filter { it.articleId.toString().contains(searchQuery) },
+                actionErrorItems = rawGroups.actionErrorItems.filter { it.articleId.toString().contains(searchQuery) },
+                expiredItems = rawGroups.expiredItems.filter { it.articleId.toString().contains(searchQuery) }
+            )
         }
     }
 
-    Box {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-        ) {
-            if (problemGroups.hasAnyProblems) {
-                item(key = "problem_panels") {
-                    ProblemsPanel(
-                        parseErrors = problemGroups.parseErrors,
-                        missingOfficialItems = problemGroups.missingOfficialItems,
-                        actionErrorItems = problemGroups.actionErrorItems,
-                        expiredItems = problemGroups.expiredItems,
-                        // 解析错误重试也走统一对话框
-                        onRetryExtraction = { viewModel.showRetryExtraction(it) },
-                        onRetryOfficial = { viewModel.showOfficialDetail(it.dynamicId) },
-                        onRetryAction = { viewModel.showRetryAction(it) },
-                        onDelete = { viewModel.showDeleteDialog(it) }
+    // 2. 主列表逻辑：仅显示不在【原始】异常分组中的动态
+    val filteredItems by remember(items, rawGroups.problemDynamicIds, searchQuery) {
+        derivedStateOf {
+            items.filter {
+                it.dynamicId !in rawGroups.problemDynamicIds &&
+                        (searchQuery.isBlank() || it.articleId.toString().contains(searchQuery))
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+        // ── 固定在顶部的搜索框 ──────────────────────────────────────────
+        SearchTopBar(
+            query = searchQuery,
+            onQueryChange = { searchViewModel.onSearchQueryChange(it) },
+            onClear = { searchViewModel.clearSearch() }
+        )
+
+        Box(modifier = Modifier.weight(1f)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // ── 异常问题面板 (使用过滤后的 filteredGroups) ─────────────────
+                if (filteredGroups.hasAnyProblems) {
+                    item(key = "problem_panels") {
+                        ProblemsPanel(
+                            parseErrors = filteredGroups.parseErrors,
+                            missingOfficialItems = filteredGroups.missingOfficialItems,
+                            actionErrorItems = filteredGroups.actionErrorItems,
+                            expiredItems = filteredGroups.expiredItems,
+                            onRetryExtraction = { viewModel.showRetryExtraction(it) },
+                            onRetryOfficial = { viewModel.showOfficialDetail(it.dynamicId) },
+                            onRetryAction = { viewModel.showRetryAction(it) },
+                            onDelete = { viewModel.showDeleteDialog(it) }
+                        )
+                    }
+                }
+
+                // ── 正常动态列表 (使用过滤后的 filteredItems) ──────────────────
+                items(
+                    items = filteredItems,
+                    key = { it.dynamicId }
+                ) { info: DynamicInfoDetail ->
+                    DynamicInfoItem(
+                        info = info,
+                        onRetry = { viewModel.showRetryExtraction(info) },
+                        onShowOfficial = { viewModel.showOfficialDetail(info.dynamicId) },
+                        onDeleteDynamic = { viewModel.showDeleteDialog(info) },
+                        onRetryAction = { viewModel.showRetryAction(info) }
                     )
                 }
+
+                // 占位 padding，防止内容被底部遮挡（如果需要）
+                item { Spacer(modifier = Modifier.height(16.dp)) }
             }
 
-            // ── 正常动态列表 ──────────────────────────────────────────────────
-            items(
-                items = filteredItems,
-                key = { it.dynamicId }
-            ) { info: DynamicInfoDetail ->
-                DynamicInfoItem(
-                    info = info,
-                    onRetry = { viewModel.showRetryExtraction(info) },
-                    onShowOfficial = { viewModel.showOfficialDetail(info.dynamicId) },
-                    onDeleteDynamic = { viewModel.showDeleteDialog(info) },
-                    onRetryAction = { viewModel.showRetryAction(info) }
+            // ── 官方抽奖详情对话框 ──────────────────────────────────────
+            if (viewModel.selectedOfficialId != null) {
+                OfficialDetailDialog(
+                    detail = officialDetail,
+                    onDismiss = { viewModel.dismissOfficialDialog() },
+                    onRetry = { viewModel.retryOfficial(it) }
                 )
             }
-        }
 
-        // ── 官方抽奖详情对话框（独立，仅用于展示内容）────────────────────────
-        if (viewModel.selectedOfficialId != null) {
-            OfficialDetailDialog(
-                detail = officialDetail,
-                onDismiss = { viewModel.dismissOfficialDialog() },
-                onRetry = { viewModel.retryOfficial(it) }
+            // ── 统一操作对话框 ──────────────────────────────────────────
+            if (viewModel.pendingAction != null) {
+                UnifiedActionDialog(viewModel = viewModel)
+            }
+        }
+    }
+}
+
+@Composable
+fun SearchTopBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClear: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.Transparent,
+        tonalElevation = 0.dp
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            placeholder = { Text("搜索专栏 ID...", style = MaterialTheme.typography.bodyMedium) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = onClear) {
+                        Icon(Icons.Default.Close, contentDescription = "清除")
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
             )
-        }
-
-        // ── 统一操作对话框（重试解析 / 重试任务 / 删除）──────────────────────
-        if (viewModel.pendingAction != null) {
-            UnifiedActionDialog(viewModel = viewModel)
-        }
+        )
     }
 }
 
@@ -207,18 +278,12 @@ private fun ProblemsPanel(
             ) {
                 missingOfficialItems.forEachIndexed { index, info ->
                     key("${info.dynamicId}_${info.serviceId ?: 0}_missing_$index") {
-                        ProblemBadgeWrapper(
-                            badgeIcon = Icons.Default.ErrorOutline,
-                            badgeColor = Color(0xFFE65100),
-                            badgeDescription = "官方信息缺失"
-                        ) {
-                            NormalDynamicCard(
-                                info = info,
-                                onClick = { onRetryOfficial(info) },
-                                onDelete = { onDelete(info) },
-                                onRetryAction = { onRetryAction(info) }
-                            )
-                        }
+                        NormalDynamicCard(
+                            info = info,
+                            onClick = { onRetryOfficial(info) },
+                            onDelete = { onDelete(info) },
+                            onRetryAction = { onRetryAction(info) }
+                        )
                         Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
@@ -236,18 +301,12 @@ private fun ProblemsPanel(
             ) {
                 actionErrorItems.forEachIndexed { index, info ->
                     key("${info.dynamicId}_${info.serviceId ?: 0}_action_$index") {
-                        ProblemBadgeWrapper(
-                            badgeIcon = Icons.Default.CloudOff,
-                            badgeColor = Color(0xFFB71C1C),
-                            badgeDescription = "任务执行异常"
-                        ) {
-                            NormalDynamicCard(
-                                info = info,
-                                onClick = { onRetryOfficial(info) },
-                                onDelete = { onDelete(info) },
-                                onRetryAction = { onRetryAction(info) }
-                            )
-                        }
+                        NormalDynamicCard(
+                            info = info,
+                            onClick = { onRetryOfficial(info) },
+                            onDelete = { onDelete(info) },
+                            onRetryAction = { onRetryAction(info) }
+                        )
                         Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
@@ -265,18 +324,12 @@ private fun ProblemsPanel(
             ) {
                 expiredItems.forEachIndexed { index, info ->
                     key("${info.dynamicId}_${info.serviceId ?: 0}_expired_$index") {
-                        ProblemBadgeWrapper(
-                            badgeIcon = Icons.Default.Schedule,
-                            badgeColor = Color(0xFF2E7D32),
-                            badgeDescription = "已过开奖时间"
-                        ) {
-                            NormalDynamicCard(
-                                info = info,
-                                onClick = { onRetryOfficial(info) },
-                                onDelete = { onDelete(info) },
-                                onRetryAction = { onRetryAction(info) }
-                            )
-                        }
+                        NormalDynamicCard(
+                            info = info,
+                            onClick = { onRetryOfficial(info) },
+                            onDelete = { onDelete(info) },
+                            onRetryAction = { onRetryAction(info) }
+                        )
                         Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
@@ -299,6 +352,7 @@ private fun ExpandableProblemSection(
     content: @Composable () -> Unit
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    var lastClickTime by remember { mutableLongStateOf(0L) }
     val arrowAngle by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
         label = "arrow_rotation"
@@ -311,7 +365,13 @@ private fun ExpandableProblemSection(
     ) {
         Column {
             Surface(
-                onClick = { expanded = !expanded },
+                onClick = {
+                    val now = System.currentTimeMillis()
+                    if (now - lastClickTime > 400L) {
+                        lastClickTime = now
+                        expanded = !expanded
+                    }
+                },
                 color = headerColor,
                 shape = if (expanded) RoundedCornerShape(
                     topStart = 12.dp,
@@ -382,40 +442,6 @@ private fun ExpandableProblemSection(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ProblemBadgeWrapper — 在卡片右上角叠加一个问题标识图标
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun ProblemBadgeWrapper(
-    badgeIcon: ImageVector,
-    badgeColor: Color,
-    badgeDescription: String,
-    content: @Composable () -> Unit
-) {
-    Box {
-        content()
-
-        Surface(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 2.dp, end = 2.dp)
-                .zIndex(1f),
-            shape = CircleShape,
-            color = badgeColor,
-            shadowElevation = 2.dp
-        ) {
-            Icon(
-                imageVector = badgeIcon,
-                contentDescription = badgeDescription,
-                tint = Color.White,
-                modifier = Modifier
-                    .size(24.dp)
-                    .padding(4.dp)
-            )
-        }
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // DynamicInfoItem — 逻辑分发组件
@@ -457,16 +483,6 @@ internal fun NormalDynamicCard(
     onRetryAction: () -> Unit
 ) {
     val isOfficial = info.type == 0
-    val currentSeconds = System.currentTimeMillis() / 1000L
-    val isExpired =
-        isOfficial && (info.officialTime ?: 0) != 0L && (info.officialTime ?: 0) < currentSeconds
-
-    val hasActionError = listOf(
-        info.repostResult,
-        info.likeResult,
-        info.replyResult,
-        info.followResult
-    ).any { it != null && it != "成功" && it != "已经关注用户，无法重复关注" }
 
     Card(
         modifier = Modifier
@@ -499,34 +515,6 @@ internal fun NormalDynamicCard(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                         )
-                    }
-
-                    if (isExpired || hasActionError) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(top = 2.dp)
-                        ) {
-                            if (isExpired) {
-                                Icon(
-                                    imageVector = Icons.Default.Warning,
-                                    contentDescription = "已过期",
-                                    tint = Color(0xFFFFC107),
-                                    modifier = Modifier
-                                        .size(14.dp)
-                                        .padding(end = 4.dp)
-                                )
-                            }
-                            if (hasActionError) {
-                                Icon(
-                                    imageVector = Icons.Default.CloudOff,
-                                    contentDescription = "任务执行异常",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier
-                                        .size(14.dp)
-                                        .padding(end = 4.dp)
-                                )
-                            }
-                        }
                     }
                 }
 
@@ -674,8 +662,6 @@ private fun StatusItem(label: String, result: String?) {
             tint = statusColor,
             modifier = Modifier.size(28.dp)
         )
-
-        Spacer(modifier = Modifier.height(8.dp))
 
         Text(
             text = result ?: "待执行",

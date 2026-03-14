@@ -5,11 +5,13 @@ import androidx.room.Room
 import com.lotterytool.data.room.AppDatabase
 import com.lotterytool.data.room.action.ActionDao
 import com.lotterytool.data.room.article.ArticleDao
+import com.lotterytool.data.room.article.ArticleDeleteDao
 import com.lotterytool.data.room.dynamicID.DynamicIdsDao
 import com.lotterytool.data.room.dynamicInfo.DynamicDeleteDao
 import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.log.CrashLogDao
 import com.lotterytool.data.room.officialInfo.OfficialInfoDao
+import com.lotterytool.data.room.saveTime.SaveTimeDao
 import com.lotterytool.data.room.task.TaskDao
 import com.lotterytool.data.room.user.UserDao
 import com.lotterytool.data.room.userDynamic.UserDynamicDao
@@ -46,6 +48,11 @@ object DatabaseModule {
     @Provides
     fun provideArticleDao(database: AppDatabase): ArticleDao {
         return database.articleDao()
+    }
+
+    @Provides
+    fun provideArticleDeleteDao(database: AppDatabase): ArticleDeleteDao{
+        return database.articleDeleteDao()
     }
 
     @Provides
@@ -91,6 +98,11 @@ object DatabaseModule {
     @Provides
     fun provideDynamicDeleteDao(database: AppDatabase): DynamicDeleteDao {
         return database.dynamicDeleteDao()
+    }
+
+    @Provides
+    fun provideSaveTimeDao(database: AppDatabase): SaveTimeDao {
+        return database.saveTimeDao()
     }
 
 }

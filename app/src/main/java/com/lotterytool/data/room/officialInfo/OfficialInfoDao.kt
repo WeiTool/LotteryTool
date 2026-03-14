@@ -13,10 +13,6 @@ interface OfficialInfoDao {
     suspend fun insertOfficialInfo(officialDynamic: OfficialInfoEntity)
 
     // 删除
-    @Query("DELETE FROM official_info WHERE dynamicId = :dynamicId")
-    suspend fun deleteOfficialById(dynamicId: Long)
-
-    // 删除
     @Query("DELETE FROM official_info WHERE dynamicId IN (:dynamicIds)")
     suspend fun deleteByDynamicIds(dynamicIds: List<Long>)
 
