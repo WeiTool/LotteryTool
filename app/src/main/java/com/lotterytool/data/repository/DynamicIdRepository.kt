@@ -11,8 +11,8 @@ class DynamicIdRepository @Inject constructor(
     private val dynamicIdsDao: DynamicIdsDao
 ) {
     companion object {
-        private val DYNAMIC_REGEX_LEGACY = Regex("""https://www\.bilibili\.com/opus/(\d+)""")
-        private val SPECIAL_DYNAMIC_REGEX_LEGACY = Regex("""https://t\.bilibili\.com/(\d+)""")
+        private val DYNAMIC_REGEX_LEGACY = Regex("""https://www\.bilibili\.com/opus/(\d+)(\?.*)?""")
+        private val SPECIAL_DYNAMIC_REGEX_LEGACY = Regex("""https://t\.bilibili\.com/(\d+)(\?.*)?""")
     }
 
     suspend fun extractDynamic(cookie: String, articleId: Long): FetchResult<Unit> {

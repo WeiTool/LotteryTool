@@ -3,8 +3,8 @@ package com.lotterytool.ui.dynamicInfo
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.lotterytool.data.room.dynamicInfo.DynamicInfoDao
 import com.lotterytool.data.room.view.DynamicInfoDetail
+import com.lotterytool.data.room.view.viewDao.DynamicInfoDetailDao
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -18,7 +18,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ProblemsViewModel @Inject constructor(
-    dynamicInfoDao: DynamicInfoDao,
+    dynamicInfoDetailDao: DynamicInfoDetailDao,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -28,7 +28,7 @@ class ProblemsViewModel @Inject constructor(
     private val type: Int = savedStateHandle.get<Int>("type") ?: 0
 
     // 仅包含本 type 的动态，不跨 type 污染
-    private val allDynamics = dynamicInfoDao.getInfoByArticleAndType(articleId, type)
+    private val allDynamics = dynamicInfoDetailDao.getInfoByArticleAndType(articleId, type)
 
     // 每 60 秒 tick 一次，驱动过期检查的实时刷新。启动时立刻发射第一个值，确保 UI 不等待。
     private val refreshTicker = flow {

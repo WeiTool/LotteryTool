@@ -39,14 +39,16 @@ class DynamicInfoRepository @Inject constructor(
         val allDynamicEntities = dynamicIdsDao.getIdsByArticleId(articleId)
         if (allDynamicEntities.isEmpty()) return
 
-        val existingIdSet = dynamicIdsDao.getAllExistingIds().toSet()
+        val processedIdSet = dynamicInfoDao.getSuccessfulDynamicIds(articleId).toSet()
 
-        val filteredEntities = allDynamicEntities.filter { entity ->
-            !existingIdSet.contains(entity.dynamicId)
+        val filteredEntities = if (forceRefresh) {
+            allDynamicEntities  // 强制刷新时不过滤
+        } else {
+            allDynamicEntities.filter { !processedIdSet.contains(it.dynamicId) }
         }
 
         if (filteredEntities.isEmpty()) {
-            onProgress(allDynamicEntities.size, allDynamicEntities.size) // 直接完成
+            onProgress(allDynamicEntities.size, allDynamicEntities.size)
             return
         }
 

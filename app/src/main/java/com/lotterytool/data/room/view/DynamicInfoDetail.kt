@@ -17,8 +17,8 @@ import com.lotterytool.data.room.task.TaskState
             d.rid,
             d.type,
             d.errorMessage          AS error_message,
-            d.specialTime,        
-            d.normalTime,           
+            d.specialTime,
+            d.normalTime,
             di.isSpecial,
             ar.mid                  AS article_mid,
             ar.publishTime          AS article_publish_time,
@@ -48,12 +48,12 @@ import com.lotterytool.data.room.task.TaskState
             u.lastUpdated           AS user_dynamic_last_updated
 
         FROM dynamic_info AS d
-        LEFT JOIN dynamic_ids   AS di ON  d.dynamicId  = di.dynamicId
-        LEFT JOIN article       AS ar ON  d.articleId  = ar.articleId
-        LEFT JOIN tasks         AS t  ON  d.articleId  = t.articleId
-        LEFT JOIN official_info AS o  ON  d.dynamicId  = o.dynamicId
-        LEFT JOIN action_info   AS a  ON  d.dynamicId  = a.dynamicId
-        LEFT JOIN user_dynamic  AS u  ON  d.dynamicId  = u.dynamicId
+        LEFT JOIN dynamic_ids   AS di ON  d.dynamicId = di.dynamicId AND d.articleId = di.articleId
+        LEFT JOIN article       AS ar ON  d.articleId = ar.articleId
+        LEFT JOIN tasks         AS t  ON  d.articleId = t.articleId
+        LEFT JOIN official_info AS o  ON  d.dynamicId = o.dynamicId
+        LEFT JOIN action_info   AS a  ON  d.dynamicId = a.dynamicId
+        LEFT JOIN user_dynamic  AS u  ON  d.dynamicId = u.dynamicId
     """
 )
 data class DynamicInfoDetail(

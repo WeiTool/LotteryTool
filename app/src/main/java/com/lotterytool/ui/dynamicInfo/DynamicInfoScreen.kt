@@ -80,40 +80,42 @@ fun DynamicInfoScreen(
     problemsViewModel: ProblemsViewModel = hiltViewModel(),
     searchViewModel: SearchViewModel = hiltViewModel(),
 ) {
-    // 动态列表 & 官方详情
     val items by viewModel.dynamicList.collectAsStateWithLifecycle()
     val officialDetail by viewModel.officialDetail.collectAsStateWithLifecycle()
-
-    // 获取原始数据和搜索词
     val rawGroups by problemsViewModel.problemGroups.collectAsStateWithLifecycle()
     val searchQuery by searchViewModel.searchQuery.collectAsStateWithLifecycle()
 
-    // 1. 根据搜索词，实时过滤出【异常分组】的结果
+    // 修复：搜索改为匹配 dynamicId 或 description，原来用 articleId（页面内所有条目相同，等于无效）
+    fun DynamicInfoDetail.matchesQuery(query: String): Boolean {
+        if (query.isBlank()) return true
+        return dynamicId.toString().contains(query) ||
+                description.contains(query, ignoreCase = true)
+    }
+
+    // 异常分组按搜索词过滤
     val filteredGroups = remember(rawGroups, searchQuery) {
         if (searchQuery.isBlank()) {
             rawGroups
         } else {
             rawGroups.copy(
-                parseErrors = rawGroups.parseErrors.filter { it.articleId.toString().contains(searchQuery) },
-                missingOfficialItems = rawGroups.missingOfficialItems.filter { it.articleId.toString().contains(searchQuery) },
-                actionErrorItems = rawGroups.actionErrorItems.filter { it.articleId.toString().contains(searchQuery) },
-                expiredItems = rawGroups.expiredItems.filter { it.articleId.toString().contains(searchQuery) }
+                parseErrors         = rawGroups.parseErrors.filter         { it.matchesQuery(searchQuery) },
+                missingOfficialItems= rawGroups.missingOfficialItems.filter { it.matchesQuery(searchQuery) },
+                actionErrorItems    = rawGroups.actionErrorItems.filter    { it.matchesQuery(searchQuery) },
+                expiredItems        = rawGroups.expiredItems.filter        { it.matchesQuery(searchQuery) }
             )
         }
     }
 
-    // 2. 主列表逻辑：仅显示不在【原始】异常分组中的动态
+    // 主列表：过滤掉已在异常面板中显示的条目
     val filteredItems by remember(items, rawGroups.problemDynamicIds, searchQuery) {
         derivedStateOf {
             items.filter {
-                it.dynamicId !in rawGroups.problemDynamicIds &&
-                        (searchQuery.isBlank() || it.articleId.toString().contains(searchQuery))
+                it.dynamicId !in rawGroups.problemDynamicIds && it.matchesQuery(searchQuery)
             }
         }
     }
 
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-        // ── 固定在顶部的搜索框 ──────────────────────────────────────────
         SearchTopBar(
             query = searchQuery,
             onQueryChange = { searchViewModel.onSearchQueryChange(it) },
@@ -121,59 +123,56 @@ fun DynamicInfoScreen(
         )
 
         Box(modifier = Modifier.weight(1f)) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // ── 异常问题面板 (使用过滤后的 filteredGroups) ─────────────────
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+
+                // ── 异常问题面板 ───────────────────────────────────────────────
                 if (filteredGroups.hasAnyProblems) {
                     item(key = "problem_panels") {
                         ProblemsPanel(
-                            parseErrors = filteredGroups.parseErrors,
+                            parseErrors          = filteredGroups.parseErrors,
                             missingOfficialItems = filteredGroups.missingOfficialItems,
-                            actionErrorItems = filteredGroups.actionErrorItems,
-                            expiredItems = filteredGroups.expiredItems,
-                            onRetryExtraction = { viewModel.showRetryExtraction(it) },
-                            onRetryOfficial = { viewModel.showOfficialDetail(it.dynamicId) },
-                            onRetryAction = { viewModel.showRetryAction(it) },
-                            onDelete = { viewModel.showDeleteDialog(it) }
+                            actionErrorItems     = filteredGroups.actionErrorItems,
+                            expiredItems         = filteredGroups.expiredItems,
+                            onRetryExtraction    = { viewModel.showRetryExtraction(it) },
+                            onRetryOfficial      = { viewModel.showOfficialDetail(it.dynamicId) },
+                            onRetryAction        = { viewModel.showRetryAction(it) },
+                            onDelete             = { viewModel.showDeleteDialog(it) }
                         )
                     }
                 }
 
-                // ── 正常动态列表 (使用过滤后的 filteredItems) ──────────────────
-                items(
-                    items = filteredItems,
-                    key = { it.dynamicId }
-                ) { info: DynamicInfoDetail ->
+                // ── 正常动态列表 ───────────────────────────────────────────────
+                items(items = filteredItems, key = { it.dynamicId }) { info ->
                     DynamicInfoItem(
-                        info = info,
-                        onRetry = { viewModel.showRetryExtraction(info) },
+                        info           = info,
+                        onRetry        = { viewModel.showRetryExtraction(info) },
                         onShowOfficial = { viewModel.showOfficialDetail(info.dynamicId) },
-                        onDeleteDynamic = { viewModel.showDeleteDialog(info) },
-                        onRetryAction = { viewModel.showRetryAction(info) }
+                        onDeleteDynamic= { viewModel.showDeleteDialog(info) },
+                        onRetryAction  = { viewModel.showRetryAction(info) }
                     )
                 }
 
-                // 占位 padding，防止内容被底部遮挡（如果需要）
                 item { Spacer(modifier = Modifier.height(16.dp)) }
             }
 
-            // ── 官方抽奖详情对话框 ──────────────────────────────────────
             if (viewModel.selectedOfficialId != null) {
                 OfficialDetailDialog(
-                    detail = officialDetail,
+                    detail    = officialDetail,
                     onDismiss = { viewModel.dismissOfficialDialog() },
-                    onRetry = { viewModel.retryOfficial(it) }
+                    onRetry   = { viewModel.retryOfficial(it) }
                 )
             }
 
-            // ── 统一操作对话框 ──────────────────────────────────────────
             if (viewModel.pendingAction != null) {
                 UnifiedActionDialog(viewModel = viewModel)
             }
         }
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SearchTopBar
+// ═══════════════════════════════════════════════════════════════════════════════
 
 @Composable
 fun SearchTopBar(
@@ -192,8 +191,9 @@ fun SearchTopBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            placeholder = { Text("搜索专栏 ID...", style = MaterialTheme.typography.bodyMedium) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            // 修复：placeholder 改为与实际搜索字段一致
+            placeholder = { Text("搜索动态 ID 或内容...", style = MaterialTheme.typography.bodyMedium) },
+            leadingIcon  = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 if (query.isNotEmpty()) {
                     IconButton(onClick = onClear) {
@@ -203,9 +203,10 @@ fun SearchTopBar(
             },
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            // 修复：改为 Text 键盘，支持搜索中文内容
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                focusedBorderColor   = MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
             )
         )
@@ -213,12 +214,9 @@ fun SearchTopBar(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Problems Panel — 四个可展开问题汇总卡片
+// ProblemsPanel
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * 问题汇总面板，包含四类可展开的问题分组。
- */
 @Composable
 private fun ProblemsPanel(
     parseErrors: List<DynamicInfoDetail>,
@@ -244,22 +242,21 @@ private fun ProblemsPanel(
             modifier = Modifier.padding(bottom = 4.dp)
         )
 
-        // ── 1. 解析错误 ──────────────────────────────────────────────────────
         if (parseErrors.isNotEmpty()) {
             ExpandableProblemSection(
-                title = "解析错误",
-                count = parseErrors.size,
-                headerColor = MaterialTheme.colorScheme.errorContainer,
+                title            = "解析错误",
+                count            = parseErrors.size,
+                headerColor      = MaterialTheme.colorScheme.errorContainer,
                 headerContentColor = MaterialTheme.colorScheme.onErrorContainer,
-                headerIcon = Icons.Default.Error
+                headerIcon       = Icons.Default.Error,
+                defaultExpanded  = true   // 解析错误默认展开，用户最需要关注
             ) {
                 parseErrors.forEachIndexed { index, info ->
-                    // 使用 key 确保在 Column 内部的唯一性
                     key("${info.dynamicId}_parse_$index") {
                         ErrorDynamicCard(
-                            dynamicId = info.dynamicId,
+                            dynamicId    = info.dynamicId,
                             errorMessage = info.errorMessage ?: "未知错误",
-                            onRetry = { onRetryExtraction(info) }
+                            onRetry      = { onRetryExtraction(info) }
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                     }
@@ -267,21 +264,21 @@ private fun ProblemsPanel(
             }
         }
 
-        // ── 2. 官方信息缺失 ──────────────────────────────────────────────────
         if (missingOfficialItems.isNotEmpty()) {
             ExpandableProblemSection(
-                title = "官方信息缺失",
-                count = missingOfficialItems.size,
-                headerColor = Color(0xFFFFF3E0),
+                title              = "官方信息缺失",
+                count              = missingOfficialItems.size,
+                headerColor        = Color(0xFFFFF3E0),
                 headerContentColor = Color(0xFFE65100),
-                headerIcon = Icons.Default.RunningWithErrors
+                headerIcon         = Icons.Default.RunningWithErrors,
+                defaultExpanded    = true
             ) {
                 missingOfficialItems.forEachIndexed { index, info ->
                     key("${info.dynamicId}_${info.serviceId ?: 0}_missing_$index") {
                         NormalDynamicCard(
-                            info = info,
-                            onClick = { onRetryOfficial(info) },
-                            onDelete = { onDelete(info) },
+                            info          = info,
+                            onClick       = { onRetryOfficial(info) },
+                            onDelete      = { onDelete(info) },
                             onRetryAction = { onRetryAction(info) }
                         )
                         Spacer(modifier = Modifier.height(4.dp))
@@ -290,21 +287,21 @@ private fun ProblemsPanel(
             }
         }
 
-        // ── 3. 任务执行异常 ──────────────────────────────────────────────────
         if (actionErrorItems.isNotEmpty()) {
             ExpandableProblemSection(
-                title = "任务执行异常",
-                count = actionErrorItems.size,
-                headerColor = Color(0xFFFCE4EC),
+                title              = "任务执行异常",
+                count              = actionErrorItems.size,
+                headerColor        = Color(0xFFFCE4EC),
                 headerContentColor = Color(0xFFB71C1C),
-                headerIcon = Icons.Default.CloudOff
+                headerIcon         = Icons.Default.CloudOff,
+                defaultExpanded    = true
             ) {
                 actionErrorItems.forEachIndexed { index, info ->
                     key("${info.dynamicId}_${info.serviceId ?: 0}_action_$index") {
                         NormalDynamicCard(
-                            info = info,
-                            onClick = { onRetryOfficial(info) },
-                            onDelete = { onDelete(info) },
+                            info          = info,
+                            onClick       = { onRetryOfficial(info) },
+                            onDelete      = { onDelete(info) },
                             onRetryAction = { onRetryAction(info) }
                         )
                         Spacer(modifier = Modifier.height(4.dp))
@@ -313,21 +310,21 @@ private fun ProblemsPanel(
             }
         }
 
-        // ── 4. 已过开奖时间 ──────────────────────────────────────────────────
         if (expiredItems.isNotEmpty()) {
             ExpandableProblemSection(
-                title = "已过开奖时间",
-                count = expiredItems.size,
-                headerColor = Color(0xFFE8F5E9),
+                title              = "已过开奖时间",
+                count              = expiredItems.size,
+                headerColor        = Color(0xFFE8F5E9),
                 headerContentColor = Color(0xFF2E7D32),
-                headerIcon = Icons.Default.Schedule
+                headerIcon         = Icons.Default.Schedule,
+                defaultExpanded    = false   // 过期条目通常较多，默认折叠减少噪音
             ) {
                 expiredItems.forEachIndexed { index, info ->
                     key("${info.dynamicId}_${info.serviceId ?: 0}_expired_$index") {
                         NormalDynamicCard(
-                            info = info,
-                            onClick = { onRetryOfficial(info) },
-                            onDelete = { onDelete(info) },
+                            info          = info,
+                            onClick       = { onRetryOfficial(info) },
+                            onDelete      = { onDelete(info) },
                             onRetryAction = { onRetryAction(info) }
                         )
                         Spacer(modifier = Modifier.height(4.dp))
@@ -338,10 +335,14 @@ private fun ProblemsPanel(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ExpandableProblemSection — 可展开的分类卡片
-// ─────────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// ExpandableProblemSection
+// ═══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * 修复：新增 [defaultExpanded] 参数，由调用方决定初始展开状态。
+ * 解析错误/任务异常/官方缺失默认展开，过期列表默认折叠。
+ */
 @Composable
 private fun ExpandableProblemSection(
     title: String,
@@ -349,9 +350,10 @@ private fun ExpandableProblemSection(
     headerColor: Color,
     headerContentColor: Color,
     headerIcon: ImageVector,
+    defaultExpanded: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(defaultExpanded) }
     var lastClickTime by remember { mutableLongStateOf(0L) }
     val arrowAngle by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
@@ -359,9 +361,9 @@ private fun ExpandableProblemSection(
     )
 
     Card(
-        shape = RoundedCornerShape(12.dp),
+        shape     = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors    = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column {
             Surface(
@@ -373,62 +375,55 @@ private fun ExpandableProblemSection(
                     }
                 },
                 color = headerColor,
-                shape = if (expanded) RoundedCornerShape(
-                    topStart = 12.dp,
-                    topEnd = 12.dp
-                ) else RoundedCornerShape(12.dp)
+                shape = if (expanded) RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
+                else RoundedCornerShape(12.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment    = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment    = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
                             imageVector = headerIcon,
                             contentDescription = null,
-                            tint = headerContentColor,
+                            tint     = headerContentColor,
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleSmall,
+                            text       = title,
+                            style      = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = headerContentColor
+                            color      = headerContentColor
                         )
-                        Surface(
-                            shape = CircleShape,
-                            color = headerContentColor
-                        ) {
+                        Surface(shape = CircleShape, color = headerContentColor) {
                             Text(
-                                text = count.toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = headerColor,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                text       = count.toString(),
+                                style      = MaterialTheme.typography.labelSmall,
+                                color      = headerColor,
+                                modifier   = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
                     Icon(
-                        imageVector = Icons.Default.ExpandMore,
+                        imageVector    = Icons.Default.ExpandMore,
                         contentDescription = if (expanded) "收起" else "展开",
-                        tint = headerContentColor,
-                        modifier = Modifier
-                            .size(24.dp)
-                            .rotate(arrowAngle)
+                        tint     = headerContentColor,
+                        modifier = Modifier.size(24.dp).rotate(arrowAngle)
                     )
                 }
             }
 
             AnimatedVisibility(
                 visible = expanded,
-                enter = expandVertically(),
-                exit = shrinkVertically()
+                enter   = expandVertically(),
+                exit    = shrinkVertically()
             ) {
                 Column(
                     modifier = Modifier
@@ -442,9 +437,8 @@ private fun ExpandableProblemSection(
     }
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════════════
-// DynamicInfoItem — 逻辑分发组件
+// DynamicInfoItem
 // ═══════════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -457,15 +451,15 @@ fun DynamicInfoItem(
 ) {
     if (info.errorMessage != null) {
         ErrorDynamicCard(
-            dynamicId = info.dynamicId,
+            dynamicId    = info.dynamicId,
             errorMessage = info.errorMessage,
-            onRetry = onRetry
+            onRetry      = onRetry
         )
     } else {
         NormalDynamicCard(
-            info = info,
-            onClick = onShowOfficial,
-            onDelete = onDeleteDynamic,
+            info          = info,
+            onClick       = onShowOfficial,
+            onDelete      = onDeleteDynamic,
             onRetryAction = onRetryAction
         )
     }
@@ -485,115 +479,100 @@ internal fun NormalDynamicCard(
     val isOfficial = info.type == 0
 
     Card(
-        modifier = Modifier
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .fillMaxWidth(),
-        onClick = { if (isOfficial) onClick() },
+        modifier  = Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth(),
+        onClick   = { if (isOfficial) onClick() },
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        )
+        colors    = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
 
-            // ── 顶部：ID + 状态图标 + 类型标签 ──────────────────────────────
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
-                modifier = Modifier.fillMaxWidth()
+                verticalAlignment     = Alignment.Top,
+                modifier              = Modifier.fillMaxWidth()
             ) {
                 Column {
                     Text(
-                        text = "ID: ${info.dynamicId}",
+                        text  = "ID: ${info.dynamicId}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
-
                     if (info.serviceId != null) {
                         Text(
-                            text = "转发 ID: ${info.serviceId}",
+                            text  = "转发 ID: ${info.serviceId}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                         )
                     }
                 }
-
                 if (isOfficial) {
                     Text(
                         "官方抽奖",
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.labelSmall,
+                        color      = MaterialTheme.colorScheme.primary,
+                        style      = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
 
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
+                modifier  = Modifier.padding(vertical = 8.dp),
                 thickness = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
 
             Text(
-                text = if (info.type == 2) info.content else info.description,
+                text  = if (info.type == 2) info.content else info.description,
                 style = MaterialTheme.typography.bodyMedium
             )
 
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
+                modifier  = Modifier.padding(vertical = 8.dp),
                 thickness = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
 
-            // ── 发布日期 + 删除按钮 ──────────────────────────────────────────
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment     = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "发布日期: ${formatPublishTime(info.timestamp)}",
+                    text  = "发布日期: ${formatPublishTime(info.timestamp)}",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                IconButton(
-                    onClick = { onDelete() },
-                    modifier = Modifier.size(24.dp)
-                ) {
+                IconButton(onClick = { onDelete() }, modifier = Modifier.size(24.dp)) {
                     Icon(
-                        imageVector = Icons.Default.Delete,
+                        imageVector    = Icons.Default.Delete,
                         contentDescription = "删除",
-                        tint = MaterialTheme.colorScheme.error,
+                        tint     = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(20.dp)
                     )
                 }
             }
 
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp),
+                modifier  = Modifier.padding(vertical = 8.dp),
                 thickness = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
 
-            // ── 任务执行状态 ─────────────────────────────────────────────────
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment     = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "任务执行状态",
+                    text  = "任务执行状态",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                IconButton(
-                    onClick = { onRetryAction() },
-                    modifier = Modifier.size(24.dp)
-                ) {
+                IconButton(onClick = { onRetryAction() }, modifier = Modifier.size(24.dp)) {
                     Icon(
-                        imageVector = Icons.Default.Refresh,
+                        imageVector    = Icons.Default.Refresh,
                         contentDescription = "重试任务",
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint     = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -602,17 +581,16 @@ internal fun NormalDynamicCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment     = Alignment.CenterVertically
             ) {
-                val statusTasks = listOf(
+                listOf(
                     "转发" to info.repostResult,
                     "点赞" to info.likeResult,
                     "评论" to info.replyResult,
                     "关注" to info.followResult
-                )
-                statusTasks.forEach { (label, result) ->
+                ).forEach { (label, result) ->
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                         StatusItem(label, result)
                     }
@@ -628,45 +606,36 @@ internal fun NormalDynamicCard(
 
 @Composable
 private fun StatusItem(label: String, result: String?) {
-    val isSuccess = result == "成功" || result == "已经关注用户，无法重复关注"
+    val isSuccess     = result == "成功" || result == "已经关注用户，无法重复关注"
     val isNotExecuted = result == null
 
     val statusColor = when {
-        isSuccess -> Color(0xFF4CAF50)
+        isSuccess     -> Color(0xFF4CAF50)
         isNotExecuted -> MaterialTheme.colorScheme.outline
-        else -> MaterialTheme.colorScheme.error
+        else          -> MaterialTheme.colorScheme.error
     }
-
     val icon = when {
-        isSuccess -> Icons.Default.CheckCircle
+        isSuccess     -> Icons.Default.CheckCircle
         isNotExecuted -> Icons.AutoMirrored.Filled.HelpOutline
-        else -> Icons.Default.Cancel
+        else          -> Icons.Default.Cancel
     }
 
     Column(
-        modifier = Modifier.padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        modifier              = Modifier.padding(vertical = 4.dp),
+        horizontalAlignment   = Alignment.CenterHorizontally,
+        verticalArrangement   = Arrangement.Center
     ) {
         Text(
-            text = label,
+            text  = label,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
         )
-
         Spacer(modifier = Modifier.height(6.dp))
-
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = statusColor,
-            modifier = Modifier.size(28.dp)
-        )
-
+        Icon(imageVector = icon, contentDescription = null, tint = statusColor, modifier = Modifier.size(28.dp))
         Text(
-            text = result ?: "待执行",
-            style = MaterialTheme.typography.bodySmall,
-            color = statusColor,
+            text     = result ?: "待执行",
+            style    = MaterialTheme.typography.bodySmall,
+            color    = statusColor,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -686,41 +655,31 @@ internal fun ErrorDynamicCard(
     onRetry: () -> Unit
 ) {
     Card(
-        modifier = Modifier
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer
-        )
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth(),
+        colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment     = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "解析异常 (ID: $dynamicId)",
+                    text  = "解析异常 (ID: $dynamicId)",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.error
                 )
                 FilledIconButton(
-                    onClick = onRetry,
+                    onClick  = onRetry,
                     modifier = Modifier.size(32.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
+                    colors   = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "重试",
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "重试", modifier = Modifier.size(18.dp))
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = errorMessage,
+                text  = errorMessage,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer
             )
@@ -729,7 +688,7 @@ internal fun ErrorDynamicCard(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// OfficialDetailDialog — 官方抽奖详情（独立展示，与操作对话框无关）
+// OfficialDetailDialog
 // ═══════════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -743,43 +702,22 @@ fun OfficialDetailDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = if (detail.isError) "解析失败" else "官方抽奖详情") },
-        text = {
+        text  = {
             Column {
                 if (detail.isError) {
-                    Text(
-                        text = detail.errorMessage ?: "未知错误",
-                        color = MaterialTheme.colorScheme.error
-                    )
+                    Text(text = detail.errorMessage ?: "未知错误", color = MaterialTheme.colorScheme.error)
                 } else {
                     DetailRow("一等奖", detail.firstPrize, detail.firstPrizeCmt)
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        thickness = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     DetailRow("二等奖", detail.secondPrize, detail.secondPrizeCmt)
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        thickness = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     DetailRow("三等奖", detail.thirdPrize, detail.thirdPrizeCmt)
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        thickness = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-                    Text(
-                        text = "开奖时间: ${formatPublishTime(detail.time)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Text(text = "开奖时间: ${formatPublishTime(detail.time)}", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("关闭") }
-        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
         dismissButton = {
             if (detail.isError) {
                 TextButton(onClick = { onRetry(detail.dynamicId) }) { Text("重试") }
@@ -794,146 +732,83 @@ fun OfficialDetailDialog(
 
 @Composable
 private fun DetailRow(label: String, people: Int, content: String) {
-    Column(
-        modifier = Modifier
-            .padding(vertical = 4.dp)
-            .fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = "共抽取 $people 人",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline
-            )
+    Column(modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(text = "共抽取 $people 人", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
         }
-        Text(
-            text = content,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 2.dp)
-        )
+        Text(text = content, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 2.dp))
     }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// UnifiedActionDialog — 统一操作对话框
-// （重试解析 / 重试任务 / 删除 共用一个 Dialog）
+// UnifiedActionDialog
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * 统一对话框，根据 [DynamicInfoViewModel.pendingAction] 的类型自动切换内容：
- *
- * - **确认阶段**：显示操作摘要，提供"取消"和确认按钮。
- * - **执行阶段**（[DynamicInfoViewModel.isExecuting] == true）：
- *   隐藏所有按钮，显示转圈 + 提示文字，**禁止点击空白处关闭**。
- * - **失败阶段**：在对话框内以红色显示错误信息，保持对话框不关闭，
- *   用户可选择重试（再次点击确认）或点击取消退出。
- * - **成功**：ViewModel 自动将 [DynamicInfoViewModel.pendingAction] 置 null，
- *   对话框自动消失。
- *
- * 任何状态下点击对话框外部区域均不会关闭对话框。
- */
 @Composable
 fun UnifiedActionDialog(viewModel: DynamicInfoViewModel) {
-    val pending = viewModel.pendingAction ?: return
+    val pending     = viewModel.pendingAction ?: return
     val isExecuting = viewModel.isExecuting
     val dialogError = viewModel.dialogError
-    val info = pending.info
+    val info        = pending.info
 
-    // ── 各类型所需的内容数据 ──────────────────────────────────────────────────
     val title: String
     val confirmLabel: String
     val confirmColor: Color
 
     when (pending.type) {
         ActionType.RETRY_EXTRACTION -> {
-            title = if (isExecuting) "正在重新解析…" else "重新解析"
+            title        = if (isExecuting) "正在重新解析…" else "重新解析"
             confirmLabel = "开始解析"
             confirmColor = MaterialTheme.colorScheme.primary
         }
-
         ActionType.RETRY_ACTION -> {
-            title = if (isExecuting) "正在执行…" else "重新执行任务"
+            title        = if (isExecuting) "正在执行…" else "重新执行任务"
             confirmLabel = "开始执行"
             confirmColor = MaterialTheme.colorScheme.primary
         }
-
         ActionType.DELETE -> {
-            title = if (isExecuting) "正在删除…" else "确认删除"
+            title        = if (isExecuting) "正在删除…" else "确认删除"
             confirmLabel = "确认删除"
             confirmColor = MaterialTheme.colorScheme.error
         }
     }
 
     AlertDialog(
-        // 任何状态下均禁止点击空白处关闭
-        onDismissRequest = { /* 禁用，只能点取消 */ },
+        onDismissRequest = { /* 禁止点击空白处关闭 */ },
         title = { Text(text = title) },
-        text = {
+        text  = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalAlignment   = Alignment.CenterHorizontally,
+                verticalArrangement   = Arrangement.spacedBy(8.dp)
             ) {
                 if (isExecuting) {
-                    // ── 执行阶段：转圈 ────────────────────────────────────────
                     Spacer(modifier = Modifier.height(8.dp))
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(48.dp),
-                        strokeWidth = 4.dp
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 4.dp)
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = when (pending.type) {
                             ActionType.RETRY_EXTRACTION -> "正在重新解析，请稍候…"
-                            ActionType.RETRY_ACTION -> "正在重新处理失败的步骤，请稍候…"
-                            ActionType.DELETE -> "正在删除，请稍候…"
+                            ActionType.RETRY_ACTION     -> "正在重新处理失败的步骤，请稍候…"
+                            ActionType.DELETE           -> "正在删除，请稍候…"
                         },
-                        style = MaterialTheme.typography.bodyMedium,
+                        style     = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color     = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 } else {
-                    // ── 确认阶段 + 错误展示阶段 ───────────────────────────────
                     when (pending.type) {
                         ActionType.RETRY_EXTRACTION -> RetryExtractionContent(info)
-                        ActionType.RETRY_ACTION -> RetryActionContent(info)
-                        ActionType.DELETE -> DeleteContent(info)
+                        ActionType.RETRY_ACTION     -> RetryActionContent(info)
+                        ActionType.DELETE           -> DeleteContent(info)
                     }
-
-                    // ── 执行失败时在底部展示红色错误信息 ─────────────────────
                     if (dialogError != null) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            thickness = 1.dp,
-                            color = MaterialTheme.colorScheme.errorContainer
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Error,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = dialogError,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.weight(1f)
-                            )
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.errorContainer)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                            Icon(imageVector = Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                            Text(text = dialogError, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -942,140 +817,59 @@ fun UnifiedActionDialog(viewModel: DynamicInfoViewModel) {
         confirmButton = {
             if (!isExecuting) {
                 TextButton(onClick = { viewModel.executeCurrentAction() }) {
-                    Text(
-                        text = if (dialogError != null) "重试" else confirmLabel,
-                        color = confirmColor
-                    )
+                    Text(text = if (dialogError != null) "重试" else confirmLabel, color = confirmColor)
                 }
             }
         },
         dismissButton = {
             if (!isExecuting) {
-                TextButton(onClick = { viewModel.dismissActionDialog() }) {
-                    Text("取消")
-                }
+                TextButton(onClick = { viewModel.dismissActionDialog() }) { Text("取消") }
             }
         }
     )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 对话框内容区块（各操作类型的确认描述）
+// 对话框内容区块
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 重新解析：展示动态 ID 和简要说明 */
 @Composable
 private fun RetryExtractionContent(info: DynamicInfoDetail) {
-    Text(
-        text = "ID: ${info.dynamicId}",
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    HorizontalDivider(
-        modifier = Modifier.padding(vertical = 4.dp),
-        thickness = 1.dp,
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-    )
-    Text(
-        text = info.errorMessage ?: "未知错误",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.fillMaxWidth()
-    )
+    Text(text = "ID: ${info.dynamicId}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    Text(text = info.errorMessage ?: "未知错误", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
 }
 
-/** 重新执行任务：展示失败步骤列表 */
 @Composable
 private fun RetryActionContent(info: DynamicInfoDetail) {
     val failedSteps = buildList {
-        if (info.repostResult != null && info.repostResult != "成功")
-            add("转发 (${info.repostResult})")
-        if (info.likeResult != null && info.likeResult != "成功")
-            add("点赞 (${info.likeResult})")
-        if (info.replyResult != null && info.replyResult != "成功")
-            add("评论 (${info.replyResult})")
-        if (info.followResult != null
-            && info.followResult != "成功"
-            && info.followResult != "已经关注用户，无法重复关注"
-        ) add("关注 (${info.followResult})")
+        if (info.repostResult != null && info.repostResult != "成功") add("转发 (${info.repostResult})")
+        if (info.likeResult   != null && info.likeResult   != "成功") add("点赞 (${info.likeResult})")
+        if (info.replyResult  != null && info.replyResult  != "成功") add("评论 (${info.replyResult})")
+        if (info.followResult != null && info.followResult != "成功" && info.followResult != "已经关注用户，无法重复关注") add("关注 (${info.followResult})")
     }
 
-    Text(
-        text = "ID: ${info.dynamicId}",
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
+    Text(text = "ID: ${info.dynamicId}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
     if (failedSteps.isNotEmpty()) {
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 4.dp),
-            thickness = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-        )
-        Text(
-            text = "以下失败步骤将被重新执行：",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth()
-        )
+        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        Text(text = "以下失败步骤将被重新执行：", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth())
         failedSteps.forEach { step ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 4.dp, top = 2.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Cancel,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(14.dp)
-                )
-                Text(
-                    text = step,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 2.dp)) {
+                Icon(imageVector = Icons.Default.Cancel, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
+                Text(text = step, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 4.dp),
-            thickness = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-        )
-        Text(
-            text = "已成功的步骤将被跳过。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            modifier = Modifier.fillMaxWidth()
-        )
+        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        Text(text = "已成功的步骤将被跳过。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), modifier = Modifier.fillMaxWidth())
     } else {
-        Text(
-            text = "没有检测到失败的步骤，是否仍要重新执行？",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(text = "没有检测到失败的步骤，是否仍要重新执行？", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-/** 删除：展示警告说明和动态 ID */
 @Composable
 private fun DeleteContent(info: DynamicInfoDetail) {
-    Icon(
-        imageVector = Icons.Default.Delete,
-        contentDescription = null,
-        tint = MaterialTheme.colorScheme.error,
-        modifier = Modifier.size(36.dp)
-    )
-    Text(
-        text = "确定要删除此动态吗？",
-        style = MaterialTheme.typography.bodyMedium,
-        textAlign = TextAlign.Center
-    )
-    Text(
-        text = "ID: ${info.dynamicId}",
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
+    Icon(imageVector = Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(36.dp))
+    Text(text = "确定要删除此动态吗？", style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+    Text(text = "ID: ${info.dynamicId}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

@@ -46,10 +46,11 @@ import java.lang.ProcessBuilder.Redirect.to
         SaveTimeEntity::class,
     ],
     views = [DynamicInfoDetail::class],
-    version = 8,
+    version = 9,
     autoMigrations = [
         AutoMigration(from = 6, to = 7),
-        AutoMigration(from = 7, to = 8)
+        AutoMigration(from = 7, to = 8),
+        AutoMigration(from = 8, to = 9)
     ],
     exportSchema = true
 )
